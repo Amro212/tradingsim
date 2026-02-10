@@ -1,0 +1,74 @@
+{
+  "name": "tradingsim",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "Shared": {
+        "$path": "src/shared"
+      }
+    },
+    "ServerScriptService": {
+      "Server": {
+        "$path": "src/server"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "Client": {
+          "$path": "src/client"
+        }
+      },
+      "$properties": {
+        "CameraMaxZoomDistance": 40,
+        "CameraMinZoomDistance": 5
+      }
+    },
+    "StarterGui": {
+      "$properties": {
+        "ScreenOrientation": "LandscapeSensor"
+      },
+      "TradingUI": {
+        "$className": "ScreenGui",
+        "$properties": {
+          "IgnoreGuiInset": true,
+          "ResetOnSpawn": false,
+          "ZIndexBehavior": "Sibling",
+          "DisplayOrder": 10
+        }
+      }
+    },
+    "Workspace": {
+      "$properties": {
+        "FilteringEnabled": true
+      }
+    },
+    "Lighting": {
+      "$properties": {
+        "Ambient": [
+          0.02,
+          0.02,
+          0.04
+        ],
+        "Brightness": 0.3,
+        "GlobalShadows": true,
+        "Outlines": false,
+        "Technology": "Voxel",
+        "ClockTime": 0,
+        "FogEnd": 400,
+        "FogStart": 100,
+        "FogColor": [
+          0.05,
+          0.05,
+          0.1
+        ],
+        "EnvironmentDiffuseScale": 0.5,
+        "EnvironmentSpecularScale": 0.3
+      }
+    },
+    "SoundService": {
+      "$properties": {
+        "RespectFilteringEnabled": true
+      }
+    }
+  }
+}
