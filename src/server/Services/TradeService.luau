@@ -10,12 +10,22 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local CoinsModule = require(ReplicatedStorage.Shared.Coins)
 local Formatting = require(ReplicatedStorage.Shared.Formatting)
 
+-- Wally packages for enhanced validation
+local t = require(ReplicatedStorage.Packages.t)
+
 local TradeService = {}
 
 -- Dependencies (injected)
 local MarketService = nil
 local PlayerService = nil
 local tradeResultRemote: RemoteEvent = nil
+
+-- Type validator: validates trade requests using t library
+local TradeRequestValidator = t.interface({
+	action = t.string,
+	coinId = t.string,
+	qty = t.intersection(t.number, t.numberPositive),
+})
 
 -------------------------------------------------
 -- Initialize
@@ -30,17 +40,16 @@ end
 -- Validate & execute a trade
 -------------------------------------------------
 function TradeService.ExecuteTrade(player: Player, action: string, coinId: string, qty: number)
-	-- === VALIDATION LAYER ===
-
-	-- Type checks
-	if type(action) ~= "string" then
-		return TradeService._reject(player, "Invalid action type.")
-	end
-	if type(coinId) ~= "string" then
-		return TradeService._reject(player, "Invalid coin ID type.")
-	end
-	if type(qty) ~= "number" then
-		return TradeService._reject(player, "Invalid quantity type.")
+	-- === VALIDATION LAYER (enhanced with Wally t library) ===
+	
+	-- First pass: Structural validation using t library
+	local requestData = { action = action, coinId = coinId, qty = qty }
+	local validationOk, validationErr = TradeRequestValidator(requestData)
+	
+	if not validationOk then
+		local errMsg = "❌ Invalid trade request: " .. validationErr
+		warn("[TradeService]", player.Name, errMsg)
+		return TradeService._reject(player, "Request validation failed. Check your input.")
 	end
 
 	-- Action must be BUY or SELL
@@ -141,6 +150,10 @@ function TradeService.ExecuteTrade(player: Player, action: string, coinId: strin
 		-- Stats
 		pState.stats.totalTrades = (pState.stats.totalTrades or 0) + 1
 
+		-- Log success to server console (visible proof of Wally validation working!)
+		print(string.format("✅ [TradeService] %s BOUGHT %.2f %s @ $%.4f (Total: $%.2f)",
+			player.Name, qty, coinId, effectivePrice, grandTotal))
+
 		-- Send result
 		tradeResultRemote:FireClient(player, {
 			ok = true,
@@ -207,6 +220,11 @@ function TradeService.ExecuteTrade(player: Player, action: string, coinId: strin
 		if realizedPnL > (pState.stats.bestTrade or 0) then
 			pState.stats.bestTrade = realizedPnL
 		end
+
+		-- Log success to server console (visible proof!)
+		local pnlSymbol = realizedPnL >= 0 and "📈" or "📉"
+		print(string.format("✅ [TradeService] %s SOLD %.2f %s @ $%.4f (PnL: %s$%.2f)",
+			player.Name, qty, coinId, effectivePrice, pnlSymbol, realizedPnL))
 
 		-- Send result
 		tradeResultRemote:FireClient(player, {
