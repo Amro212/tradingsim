@@ -5,9 +5,8 @@
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
+local _TweenService = game:GetService("TweenService")
 
-local Coins = require(ReplicatedStorage.Shared.Coins)
 local Formatting = require(ReplicatedStorage.Shared.Formatting)
 
 local StationController = {}
@@ -22,21 +21,29 @@ local onInteractCallbacks: {(string) -> ()} = {}
 function StationController.Init(uiCtrl)
 	UIController = uiCtrl
 
-	-- Find all station screens in workspace
+	-- Find the trading floor model (built server-side)
 	local floor = workspace:WaitForChild("TradingFloor", 30)
 	if not floor then
 		warn("[StationController] TradingFloor not found!")
 		return
 	end
 
-	for _, child in floor:GetDescendants() do
-		if child:IsA("BasePart") and child:GetAttribute("CoinId") then
-			local coinId = child:GetAttribute("CoinId")
-			local coinDef = Coins.ById[coinId]
-			if coinDef then
-				StationController._createScreenGui(child, coinDef)
-				StationController._wirePrompt(child, coinId)
+	-- Wait for each expected station model to replicate before scanning.
+	-- This avoids the race condition where GetDescendants() runs before
+	-- all station parts have arrived from the server.
+	local Coins = require(ReplicatedStorage.Shared.Coins)
+	for _, coinDef in Coins.List do
+		local stationModel = floor:WaitForChild("Station_" .. coinDef.id, 15)
+		if stationModel then
+			local screen = stationModel:WaitForChild("Screen", 10)
+			if screen and screen:GetAttribute("CoinId") then
+				StationController._createScreenGui(screen, coinDef)
+				StationController._wirePrompt(screen, coinDef.id)
+			else
+				warn("[StationController] Screen not found for station: " .. coinDef.id)
 			end
+		else
+			warn("[StationController] Station model not found: Station_" .. coinDef.id)
 		end
 	end
 end
