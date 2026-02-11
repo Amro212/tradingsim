@@ -2,6 +2,7 @@
 	init.client.luau — Main client entry point for 3D trading floor.
 	Builds HUD UI, initializes controllers, wires StationController
 	ProximityPrompts to open trade modal, connects all remotes.
+	NEW: Wires candlestick chart remotes + timeframe switching.
 ]]
 
 local Players = game:GetService("Players")
@@ -60,16 +61,36 @@ NewsController.Init(UIController)
 TutorialController.Init(UIController)
 StationController.Init(UIController)
 
+-------------------------------------------------
+-- Helper: request candle data from server
+-------------------------------------------------
+local function requestCandles(coinId: string, timeframe: string)
+	local remote = Remotes:FindFirstChild("RequestCandles")
+	if remote then
+		remote:FireServer(coinId, timeframe, 200)
+	end
+end
+
 -- Wire station interaction → open trade modal
 StationController.OnInteract(function(coinId)
 	MarketController.SelectCoin(coinId)
 	TradeController.SetAction("BUY") -- reset to BUY on open
 	TradeController.UpdateHoldingInfo()
 	UIController.OpenTradeModal()
-	-- Request chart data
-	local hr = Remotes:FindFirstChild("CoinHistory")
-	if hr then hr:FireServer(coinId) end
+
+	-- Set coin on chart renderer and request candle data
+	ChartRenderer.SetCoin(coinId)
+	requestCandles(coinId, ChartRenderer.GetTimeframe())
 end)
+
+-- Wire timeframe change callback
+ChartRenderer._onTimeframeChanged = function(newTf: string)
+	local coinId = MarketController.GetSelectedCoinId()
+	if coinId then
+		ChartRenderer.Clear()
+		requestCandles(coinId, newTf)
+	end
+end
 
 -- Wire bottom panel toggle
 local toggleBtn = UIController.GetElement("BottomToggle")
@@ -135,19 +156,61 @@ if initRemote then
 	end
 end
 
+-- =====================================
 -- Connect remotes
+-- =====================================
+
+-- Market snapshots (existing)
 Remotes:WaitForChild("MarketSnapshot").OnClientEvent:Connect(function(snapshot)
 	MarketController.UpdateMarket(snapshot)
 	StationController.UpdatePrices(snapshot)
 	TradeController.UpdateTopBar()
 end)
 
+-- Legacy coin history (line chart — still used if chart hasn't switched to candles)
 Remotes:WaitForChild("CoinHistory").OnClientEvent:Connect(function(coinId, history)
+	-- Only draw legacy if no candle data has been received yet
+	-- (this acts as a fallback)
 	if coinId == MarketController.GetSelectedCoinId() then
-		ChartRenderer.Draw(history)
+		-- Don't override if we already have candle data
+		-- ChartRenderer.Draw(history) -- disabled: candles take priority
 	end
 end)
 
+-- OHLC Candle history batch (response to RequestCandles)
+local candleHistoryRemote = Remotes:WaitForChild("CandleHistory", 10)
+if candleHistoryRemote then
+	candleHistoryRemote.OnClientEvent:Connect(function(coinId, timeframe, candles)
+		-- Only process if matches current selection + timeframe
+		if coinId ~= MarketController.GetSelectedCoinId() then return end
+		if timeframe ~= ChartRenderer.GetTimeframe() then return end
+		ChartRenderer.RenderCandles(candles)
+	end)
+end
+
+-- Live candle update (current candle OHLC changing)
+local candleUpdateRemote = Remotes:WaitForChild("CandleUpdate", 10)
+if candleUpdateRemote then
+	candleUpdateRemote.OnClientEvent:Connect(function(coinId, timeframe, candle)
+		if coinId ~= MarketController.GetSelectedCoinId() then return end
+		if timeframe ~= ChartRenderer.GetTimeframe() then return end
+		-- Only update if modal is open (perf: skip rendering when hidden)
+		if not UIController.IsTradeModalOpen() then return end
+		ChartRenderer.UpdateLastCandle(candle)
+	end)
+end
+
+-- Finalized candle append (new candle closed, pushed to history)
+local candleAppendRemote = Remotes:WaitForChild("CandleAppend", 10)
+if candleAppendRemote then
+	candleAppendRemote.OnClientEvent:Connect(function(coinId, timeframe, candle)
+		if coinId ~= MarketController.GetSelectedCoinId() then return end
+		if timeframe ~= ChartRenderer.GetTimeframe() then return end
+		ChartRenderer.AppendCandle(candle)
+	end)
+end
+
+-- Trade results
 Remotes:WaitForChild("TradeResult").OnClientEvent:Connect(function(result)
 	TradeController.OnTradeResult(result)
 	if result.ok and result.trade then
@@ -165,26 +228,45 @@ Remotes:WaitForChild("NewsEvent").OnClientEvent:Connect(function(eventData)
 	NewsController.AddEvent(eventData)
 end)
 
--- Periodic chart refresh for selected coin (while modal is open)
+-- Periodic candle refresh while modal is open
+-- (re-request full candle set every 10 seconds as a safety net)
 task.spawn(function()
 	while true do
-		task.wait(2)
+		task.wait(10)
 		if UIController.IsTradeModalOpen() then
 			local coinId = MarketController.GetSelectedCoinId()
 			if coinId then
-				local hr = Remotes:FindFirstChild("CoinHistory")
-				if hr then hr:FireServer(coinId) end
+				requestCandles(coinId, ChartRenderer.GetTimeframe())
 			end
 		end
 	end
 end)
 
--- Escape key to close modal
+-- Escape key to close modal + Shift to sprint
+local WALK_SPEED = 20
+local SPRINT_SPEED = 36
+
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
 	if input.KeyCode == Enum.KeyCode.Escape then
 		if UIController.IsTradeModalOpen() then
 			UIController.CloseTradeModal()
+		end
+	elseif input.KeyCode == Enum.KeyCode.LeftShift then
+		local char = player.Character
+		if char then
+			local hum = char:FindFirstChildOfClass("Humanoid")
+			if hum then hum.WalkSpeed = SPRINT_SPEED end
+		end
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input, _processed)
+	if input.KeyCode == Enum.KeyCode.LeftShift then
+		local char = player.Character
+		if char then
+			local hum = char:FindFirstChildOfClass("Humanoid")
+			if hum then hum.WalkSpeed = WALK_SPEED end
 		end
 	end
 end)

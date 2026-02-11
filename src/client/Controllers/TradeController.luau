@@ -176,7 +176,7 @@ function TradeController.UpdateTopBar()
 	local tb = UIController.GetElement("TopBar")
 	if not tb then return end
 	local C = UIController.Colors
-	local cv = tb:FindFirstChild("CashValue")
+	local cv = tb:FindFirstChild("CashValue", true)
 	if cv then cv.Text = Formatting.formatCash(playerCash) end
 	local totalVal, totalPnL = playerCash, 0
 	for cid, h in playerHoldings do
@@ -186,9 +186,9 @@ function TradeController.UpdateTopBar()
 			totalPnL += h.qty * (p - h.avgEntry)
 		end
 	end
-	local pv = tb:FindFirstChild("PortfolioValue")
+	local pv = tb:FindFirstChild("PortfolioValue", true)
 	if pv then pv.Text = Formatting.formatCash(totalVal) end
-	local pl = tb:FindFirstChild("PnLValue")
+	local pl = tb:FindFirstChild("PnLValue", true)
 	if pl then pl.Text = Formatting.formatCash(totalPnL); pl.TextColor3 = totalPnL >= 0 and C.green or C.red end
 end
 

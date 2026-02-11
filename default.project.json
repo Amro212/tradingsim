@@ -48,24 +48,24 @@
     "Lighting": {
       "$properties": {
         "Ambient": [
-          0.02,
-          0.02,
-          0.04
+          0.35,
+          0.35,
+          0.40
         ],
-        "Brightness": 0.3,
+        "Brightness": 2.5,
         "GlobalShadows": true,
         "Outlines": false,
         "Technology": "Voxel",
-        "ClockTime": 0,
-        "FogEnd": 400,
-        "FogStart": 100,
+        "ClockTime": 10,
+        "FogEnd": 800,
+        "FogStart": 300,
         "FogColor": [
-          0.05,
-          0.05,
-          0.1
+          0.75,
+          0.80,
+          0.90
         ],
-        "EnvironmentDiffuseScale": 0.5,
-        "EnvironmentSpecularScale": 0.3
+        "EnvironmentDiffuseScale": 1.0,
+        "EnvironmentSpecularScale": 0.6
       }
     },
     "SoundService": {

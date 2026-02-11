@@ -31,6 +31,13 @@ local remotes = {
 	NewsEvent       = makeRemote("RemoteEvent", "NewsEvent"),
 	PlayerState     = makeRemote("RemoteEvent", "PlayerState"),
 	GetInitialState = makeRemote("RemoteFunction", "GetInitialState"),
+	-- Candlestick chart remotes
+	RequestCandles  = makeRemote("RemoteEvent", "RequestCandles"),
+	CandleHistory   = makeRemote("RemoteEvent", "CandleHistory"),
+	CandleUpdate    = makeRemote("RemoteEvent", "CandleUpdate"),
+	CandleAppend    = makeRemote("RemoteEvent", "CandleAppend"),
+	-- Tutorial
+	TutorialDone    = makeRemote("RemoteEvent", "TutorialDone"),
 }
 
 -- =============================================
@@ -72,6 +79,14 @@ print("[Server] Trading floor built.")
 -- Trade requests: validate and execute server-side
 remotes.RequestTrade.OnServerEvent:Connect(function(player, action, coinId, qty)
 	TradeService.ExecuteTrade(player, action, coinId, qty)
+end)
+
+-- Tutorial done: client tells server when tutorial is completed
+remotes.TutorialDone.OnServerEvent:Connect(function(player)
+	local state = PlayerService.GetState(player)
+	if state then
+		state.tutorialDone = true
+	end
 end)
 
 -- Initial state request: client calls once on load

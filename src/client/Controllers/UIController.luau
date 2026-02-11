@@ -128,7 +128,7 @@ function UIController.BuildLayout(gui: ScreenGui)
 	-- ===== TOP BAR HUD (always visible, floats over 3D) =====
 	local topBar = UIController.makeFrame({
 		name = "TopBar",
-		size = UDim2.new(1, 0, 0, 44),
+		size = UDim2.new(1, 0, 0, 48),
 		bg = Colors.bgSecondary,
 		parent = gui,
 	})
@@ -139,33 +139,59 @@ function UIController.BuildLayout(gui: ScreenGui)
 		bg = Colors.border, parent = topBar,
 	})
 
-	UIController.makeLabel({ name = "Title", text = "💹 MEMECOIN TRADER",
-		font = FONT_BOLD, textSize = 16, color = Colors.gold,
-		size = UDim2.new(0, 200, 1, 0), pos = UDim2.new(0, 16, 0, 0), parent = topBar,
+	-- Center container for top bar content (avoids Roblox chat/menu overlap on left)
+	local topBarContent = UIController.makeFrame({
+		name = "TopBarContent",
+		size = UDim2.new(0, 700, 1, 0),
+		pos = UDim2.new(0.5, 0, 0, 0),
+		anchor = Vector2.new(0.5, 0),
+		bg = Colors.bgSecondary,
+		parent = topBar,
 	})
-	UIController.makeLabel({ name = "CashLabel", text = "💰",
-		textSize = 12, color = Colors.textSecondary,
-		size = UDim2.new(0, 20, 1, 0), pos = UDim2.new(0, 240, 0, 0), parent = topBar,
+	topBarContent.BackgroundTransparency = 1
+
+	-- Layout: centered items flow horizontally
+	local topLayout = Instance.new("UIListLayout")
+	topLayout.FillDirection = Enum.FillDirection.Horizontal
+	topLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	topLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+	topLayout.Padding = UDim.new(0, 12)
+	topLayout.Parent = topBarContent
+
+	-- Title
+	UIController.makeLabel({ name = "Title", text = "💹 MEMECOIN TRADER",
+		font = FONT_BOLD, textSize = 18, color = Colors.gold,
+		size = UDim2.new(0, 210, 1, 0), parent = topBarContent,
+	})
+
+	-- Cash section
+	UIController.makeLabel({ name = "CashLabel", text = "💰 Cash:",
+		font = FONT_LIGHT, textSize = 14, color = Colors.textSecondary,
+		size = UDim2.new(0, 70, 1, 0), parent = topBarContent,
 	})
 	UIController.makeLabel({ name = "CashValue", text = "$10,000.00",
-		font = FONT_BOLD, textSize = 15, color = Colors.green,
-		size = UDim2.new(0, 130, 1, 0), pos = UDim2.new(0, 260, 0, 0), parent = topBar,
+		font = FONT_BOLD, textSize = 17, color = Colors.green,
+		size = UDim2.new(0, 120, 1, 0), parent = topBarContent,
 	})
-	UIController.makeLabel({ name = "PortfolioLabel", text = "📊",
-		textSize = 12, color = Colors.textSecondary,
-		size = UDim2.new(0, 20, 1, 0), pos = UDim2.new(0, 410, 0, 0), parent = topBar,
+
+	-- Portfolio section
+	UIController.makeLabel({ name = "PortfolioLabel", text = "📊 Portfolio:",
+		font = FONT_LIGHT, textSize = 14, color = Colors.textSecondary,
+		size = UDim2.new(0, 90, 1, 0), parent = topBarContent,
 	})
 	UIController.makeLabel({ name = "PortfolioValue", text = "$10,000.00",
-		font = FONT_BOLD, textSize = 15, color = Colors.textPrimary,
-		size = UDim2.new(0, 130, 1, 0), pos = UDim2.new(0, 430, 0, 0), parent = topBar,
+		font = FONT_BOLD, textSize = 17, color = Colors.textPrimary,
+		size = UDim2.new(0, 120, 1, 0), parent = topBarContent,
 	})
-	UIController.makeLabel({ name = "PnLLabel", text = "P&L",
-		textSize = 11, color = Colors.textSecondary,
-		size = UDim2.new(0, 30, 1, 0), pos = UDim2.new(0, 580, 0, 0), parent = topBar,
+
+	-- P&L section
+	UIController.makeLabel({ name = "PnLLabel", text = "P&L:",
+		font = FONT_LIGHT, textSize = 14, color = Colors.textSecondary,
+		size = UDim2.new(0, 35, 1, 0), parent = topBarContent,
 	})
 	UIController.makeLabel({ name = "PnLValue", text = "$0.00",
-		font = FONT_BOLD, textSize = 15, color = Colors.textPrimary,
-		size = UDim2.new(0, 110, 1, 0), pos = UDim2.new(0, 610, 0, 0), parent = topBar,
+		font = FONT_BOLD, textSize = 17, color = Colors.textPrimary,
+		size = UDim2.new(0, 100, 1, 0), parent = topBarContent,
 	})
 
 	-- ===== TRADE POPUP MODAL (centered, hidden initially) =====
@@ -252,17 +278,17 @@ function UIController.BuildLayout(gui: ScreenGui)
 
 	-- Qty label + input
 	UIController.makeLabel({ name = "QtyLabel", text = "  Quantity",
-		font = FONT_LIGHT, textSize = 11, color = Colors.textSecondary,
-		size = UDim2.new(1, 0, 0, 18), pos = UDim2.new(0, 0, 0, 48), parent = orderPanel,
+		font = FONT_LIGHT, textSize = 13, color = Colors.textSecondary,
+		size = UDim2.new(1, 0, 0, 20), pos = UDim2.new(0, 0, 0, 48), parent = orderPanel,
 	}).ZIndex = 53
 	local qtyInput = Instance.new("TextBox")
 	qtyInput.Name = "QtyInput"
 	qtyInput.Size = UDim2.new(1, -12, 0, 34)
-	qtyInput.Position = UDim2.new(0, 6, 0, 66)
+	qtyInput.Position = UDim2.new(0, 6, 0, 68)
 	qtyInput.BackgroundColor3 = Colors.bgTertiary
 	qtyInput.BorderSizePixel = 0
 	qtyInput.FontFace = FONT
-	qtyInput.TextSize = 14
+	qtyInput.TextSize = 15
 	qtyInput.TextColor3 = Colors.textPrimary
 	qtyInput.PlaceholderText = "Enter amount..."
 	qtyInput.PlaceholderColor3 = Colors.textSecondary
@@ -276,8 +302,8 @@ function UIController.BuildLayout(gui: ScreenGui)
 
 	-- Quick % buttons
 	local quickBtns = UIController.makeFrame({
-		name = "QuickButtons", size = UDim2.new(1, -12, 0, 26),
-		pos = UDim2.new(0, 6, 0, 108), bg = Colors.bgSecondary, parent = orderPanel,
+		name = "QuickButtons", size = UDim2.new(1, -12, 0, 28),
+		pos = UDim2.new(0, 6, 0, 110), bg = Colors.bgSecondary, parent = orderPanel,
 	})
 	quickBtns.ZIndex = 53
 	local ql = Instance.new("UIListLayout", quickBtns)
@@ -286,47 +312,48 @@ function UIController.BuildLayout(gui: ScreenGui)
 	for _, pct in {25, 50, 75, 100} do
 		local qb = UIController.makeButton({ name = "Quick"..pct, text = pct.."%",
 			size = UDim2.new(0.25, -3, 1, 0), bg = Colors.bgTertiary,
-			hoverBg = Colors.bgHover, corner = 4, textSize = 11, parent = quickBtns,
+			hoverBg = Colors.bgHover, corner = 4, textSize = 12, parent = quickBtns,
 		})
 		qb.ZIndex = 54
 	end
 
 	-- Cost preview
 	UIController.makeLabel({ name = "CostPreview", text = "",
-		font = FONT_LIGHT, textSize = 11, color = Colors.textSecondary,
-		size = UDim2.new(1, -12, 0, 18), pos = UDim2.new(0, 6, 0, 142),
+		font = FONT_LIGHT, textSize = 13, color = Colors.textSecondary,
+		size = UDim2.new(1, -12, 0, 20), pos = UDim2.new(0, 6, 0, 146),
 		alignX = Enum.TextXAlignment.Center, parent = orderPanel,
 	}).ZIndex = 53
 
 	-- Execute button
 	local eb = UIController.makeButton({ name = "ExecuteBtn", text = "BUY NOW",
-		size = UDim2.new(1, -12, 0, 40), pos = UDim2.new(0, 6, 0, 168),
+		size = UDim2.new(1, -12, 0, 42), pos = UDim2.new(0, 6, 0, 174),
 		bg = Colors.green, hoverBg = Color3.fromHex("#2EA043"), corner = 8,
-		textSize = 16, parent = orderPanel,
+		textSize = 17, parent = orderPanel,
 	})
 	eb.ZIndex = 54
 
 	-- Holdings summary in modal
 	UIController.makeLabel({ name = "HoldingInfo", text = "",
-		font = FONT_LIGHT, textSize = 11, color = Colors.textSecondary,
-		size = UDim2.new(1, -12, 0, 40), pos = UDim2.new(0, 6, 0, 220),
+		font = FONT_LIGHT, textSize = 13, color = Colors.textSecondary,
+		size = UDim2.new(1, -12, 0, 40), pos = UDim2.new(0, 6, 0, 226),
 		alignX = Enum.TextXAlignment.Center, parent = orderPanel,
 	}).ZIndex = 53
 
-	-- ===== BOTTOM PANEL (toggleable) =====
+	-- ===== BOTTOM PANEL (toggleable, starts HIDDEN below screen) =====
 	local bottomToggle = UIController.makeButton({
 		name = "BottomToggle", text = "📊 Portfolio",
-		size = UDim2.new(0, 130, 0, 32), pos = UDim2.new(0, 10, 1, -42),
+		size = UDim2.new(0, 140, 0, 34), pos = UDim2.new(0, 12, 1, -46),
 		bg = Colors.bgSecondary, hoverBg = Colors.bgTertiary, corner = 8,
-		textSize = 12, parent = gui,
+		textSize = 14, parent = gui,
 	})
 	bottomToggle.BackgroundTransparency = 0.15
 
+	local PANEL_HEIGHT = 280
 	local bottomPanel = UIController.makeFrame({
 		name = "BottomPanel",
-		size = UDim2.new(0.85, 0, 0.35, 0),
-		pos = UDim2.new(0.5, 0, 1, 10), -- hidden below screen
-		anchor = Vector2.new(0.5, 1),
+		size = UDim2.new(0.85, 0, 0, PANEL_HEIGHT),
+		pos = UDim2.new(0.5, 0, 1, PANEL_HEIGHT + 10), -- fully hidden below screen
+		anchor = Vector2.new(0.5, 0),
 		bg = Colors.bgSecondary,
 		corner = 12,
 		stroke = 1,
@@ -336,7 +363,7 @@ function UIController.BuildLayout(gui: ScreenGui)
 
 	-- Tab bar
 	local tabBar = UIController.makeFrame({
-		name = "TabBar", size = UDim2.new(1, 0, 0, 32),
+		name = "TabBar", size = UDim2.new(1, 0, 0, 34),
 		bg = Colors.bgSecondary, parent = bottomPanel,
 	})
 	local tl = Instance.new("UIListLayout", tabBar)
@@ -345,7 +372,7 @@ function UIController.BuildLayout(gui: ScreenGui)
 		UIController.makeButton({ name = "Tab"..i, text = tn,
 			size = UDim2.new(1/3, 0, 1, 0),
 			bg = i==1 and Colors.bgTertiary or Colors.bgSecondary,
-			hoverBg = Colors.bgTertiary, corner = 0, textSize = 12,
+			hoverBg = Colors.bgTertiary, corner = 0, textSize = 13,
 			textColor = i==1 and Colors.textPrimary or Colors.textSecondary,
 			parent = tabBar,
 		})
@@ -353,8 +380,8 @@ function UIController.BuildLayout(gui: ScreenGui)
 
 	-- Tab content
 	local tabContent = UIController.makeFrame({
-		name = "TabContent", size = UDim2.new(1, -8, 1, -36),
-		pos = UDim2.new(0, 4, 0, 34), bg = Colors.bgSecondary, parent = bottomPanel,
+		name = "TabContent", size = UDim2.new(1, -8, 1, -38),
+		pos = UDim2.new(0, 4, 0, 36), bg = Colors.bgSecondary, parent = bottomPanel,
 	})
 	tabContent.BackgroundTransparency = 1
 
@@ -371,14 +398,14 @@ function UIController.BuildLayout(gui: ScreenGui)
 
 	-- ===== TOAST =====
 	local toast = UIController.makeFrame({
-		name = "TradeToast", size = UDim2.new(0.35, 0, 0, 44),
-		pos = UDim2.new(0.5, 0, 0, -50), anchor = Vector2.new(0.5, 0),
+		name = "TradeToast", size = UDim2.new(0.35, 0, 0, 48),
+		pos = UDim2.new(0.5, 0, 0, -56), anchor = Vector2.new(0.5, 0),
 		bg = Colors.bgTertiary, corner = 8, stroke = 1, strokeColor = Colors.accent,
 		parent = gui,
 	})
 	toast.ZIndex = 100
 	UIController.makeLabel({ name = "ToastText", text = "",
-		font = FONT, textSize = 13, color = Colors.textPrimary,
+		font = FONT, textSize = 14, color = Colors.textPrimary,
 		size = UDim2.new(1, -16, 1, 0), pos = UDim2.new(0, 8, 0, 0),
 		alignX = Enum.TextXAlignment.Center, parent = toast,
 	}).ZIndex = 101
@@ -393,8 +420,17 @@ function UIController.GetElement(path: string): GuiObject?
 	if not screenGui then return nil end
 	local current: Instance = screenGui
 	for segment in path:gmatch("[^%.]+") do
-		current = current:FindFirstChild(segment)
-		if not current then return nil end
+		-- Search in direct children first, then try nested TopBarContent
+		local found = current:FindFirstChild(segment)
+		if not found then
+			-- Labels inside TopBarContent are accessed via "TopBar.CashValue" etc
+			local tbc = current:FindFirstChild("TopBarContent")
+			if tbc then
+				found = tbc:FindFirstChild(segment)
+			end
+		end
+		if not found then return nil end
+		current = found
 	end
 	return current :: GuiObject
 end
@@ -437,20 +473,31 @@ function UIController.IsTradeModalOpen(): boolean
 end
 
 -------------------------------------------------
--- Bottom panel toggle
+-- Bottom panel toggle (fixed: proper show/hide)
 -------------------------------------------------
+local PANEL_HEIGHT = 280
 local bottomPanelOpen = false
+
 function UIController.ToggleBottomPanel()
 	bottomPanelOpen = not bottomPanelOpen
 	local panel = UIController.GetElement("BottomPanel")
 	if panel then
-		local target = bottomPanelOpen
-			and UDim2.new(0.5, 0, 1, -6)
-			or UDim2.new(0.5, 0, 1, 10)
-		TweenService:Create(panel, TweenInfo.new(0.3, Enum.EasingStyle.Back), {
+		local target
+		if bottomPanelOpen then
+			-- Slide up: position panel so its top edge appears above screen bottom
+			target = UDim2.new(0.5, 0, 1, -(PANEL_HEIGHT + 10))
+		else
+			-- Slide down: fully hidden below screen edge
+			target = UDim2.new(0.5, 0, 1, PANEL_HEIGHT + 10)
+		end
+		TweenService:Create(panel, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
 			Position = target
 		}):Play()
 	end
+end
+
+function UIController.IsBottomPanelOpen(): boolean
+	return bottomPanelOpen
 end
 
 -------------------------------------------------
@@ -468,7 +515,7 @@ function UIController.ShowToast(message: string, isSuccess: boolean)
 	}):Play()
 	task.delay(3, function()
 		TweenService:Create(toast, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-			Position = UDim2.new(0.5, 0, 0, -50)
+			Position = UDim2.new(0.5, 0, 0, -56)
 		}):Play()
 	end)
 end

@@ -4,6 +4,7 @@
 ]]
 
 local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local TutorialController = {}
 local UIController = nil
@@ -12,6 +13,7 @@ local tutorialDone = false
 local STEPS = {
 	{ title = "Welcome to Memecoin Trader! 💹", body = "Walk around the trading floor and trade virtual memecoins. Grow your portfolio and become the ultimate degen!" },
 	{ title = "🏪 Trading Stations", body = "Walk up to any glowing station to see a coin's live price. Press E to open the trading panel!" },
+	{ title = "🏃 Move Around", body = "Use WASD to walk. Hold LEFT SHIFT to sprint! Get to those stations faster." },
 	{ title = "💰 Your Cash", body = "You start with $10,000. Check your balance in the top bar. Spend wisely!" },
 	{ title = "📈 Buy & Sell", body = "Use the trade panel to Buy or Sell. Use the quick % buttons to fill amounts fast." },
 	{ title = "📰 Watch the News!", body = "Events like whale dumps and influencer tweets move prices. Open Portfolio at the bottom to see news, holdings, and trade history." },
@@ -44,7 +46,17 @@ function TutorialController.Start()
 	local function showStep()
 		for _, c in overlay:GetChildren() do c:Destroy() end
 		local step = STEPS[stepIdx]
-		if not step then overlay:Destroy(); return end
+		if not step then
+			-- Tutorial complete — destroy overlay and notify server
+			overlay:Destroy()
+			tutorialDone = true
+			local remote = ReplicatedStorage:FindFirstChild("Remotes")
+			if remote then
+				local td = remote:FindFirstChild("TutorialDone")
+				if td then td:FireServer() end
+			end
+			return
+		end
 
 		local card = UIController.makeFrame({
 			name = "Card", size = UDim2.new(0, 420, 0, 170),
