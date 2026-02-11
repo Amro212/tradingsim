@@ -55,6 +55,10 @@ TradeService.Init(remotes, MarketService, PlayerService)
 
 print("[Server] All services initialized.")
 
+-- Wally proof: verify package management works
+local wallyProof = require(ReplicatedStorage.Shared.WallyProof)
+print("[Server] ✓ Wally packages loaded successfully:", wallyProof)
+
 -- =============================================
 -- 4) Build the 3D trading floor
 -- =============================================
