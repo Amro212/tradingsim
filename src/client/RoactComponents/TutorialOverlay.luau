@@ -9,13 +9,14 @@ local Roact = require(ReplicatedStorage.Packages.Roact)
 local Theme = require(script.Parent.Theme)
 
 local STEPS = {
-	{ title = "Welcome, Trader! 💹", body = "You've entered the Memecoin Trading Floor. Walk around and explore!" },
-	{ title = "Sprint 🏃", body = "Hold LEFT SHIFT to sprint between stations faster." },
-	{ title = "Find a Station 🖥️", body = "Walk up to any glowing station and press E to start trading." },
-	{ title = "Make Your First Trade 📈", body = "Use BUY/SELL buttons, enter a quantity, and hit Execute!" },
-	{ title = "Your Cash 💰", body = "You start with $10,000. Check your balance in the top bar." },
-	{ title = "Portfolio & History 📊", body = "Toggle the bottom panel for your holdings, trade history, and market news." },
-	{ title = "Good Luck! 🚀", body = "Trade smart, watch the charts, and may your memecoins moon! 🌙" },
+	{ title = "Welcome, Trader!", body = "You've entered the Memecoin Trading Floor. Walk around and explore the hub!" },
+	{ title = "Sprint", body = "Hold LEFT SHIFT to sprint between stations faster." },
+	{ title = "Trading Terminals", body = "Walk up to any terminal in the Trading Row and press E to open the Market." },
+	{ title = "Market List", body = "Browse all coins — sorted by top movers. Click any coin to open the trading view." },
+	{ title = "Make Your First Trade", body = "Use BUY/SELL buttons, enter a quantity, and hit Execute!" },
+	{ title = "Your Cash", body = "You start with $10,000. Check your balance in the top bar." },
+	{ title = "Portfolio & History", body = "Toggle the bottom panel for your holdings, trade history, and market news." },
+	{ title = "Good Luck!", body = "Trade smart, watch the charts, and may your memecoins moon!" },
 }
 
 local TutorialOverlay = Roact.Component:extend("TutorialOverlay")

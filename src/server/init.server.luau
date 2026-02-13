@@ -2,7 +2,7 @@
 	init.server.luau — Main server entry point.
 	Creates RemoteEvents, initializes all services, builds 3D trading floor,
 	wires remote handlers, and starts simulation loops.
-	Characters are FREE to walk around the trading floor.
+	Milestone 1: Global Market + Terminal UI
 ]]
 
 local Players = game:GetService("Players")
@@ -24,20 +24,24 @@ local function makeRemote(className: string, name: string): Instance
 end
 
 local remotes = {
-	RequestTrade    = makeRemote("RemoteEvent", "RequestTrade"),
-	MarketSnapshot  = makeRemote("RemoteEvent", "MarketSnapshot"),
-	CoinHistory     = makeRemote("RemoteEvent", "CoinHistory"),
-	TradeResult     = makeRemote("RemoteEvent", "TradeResult"),
-	NewsEvent       = makeRemote("RemoteEvent", "NewsEvent"),
-	PlayerState     = makeRemote("RemoteEvent", "PlayerState"),
-	GetInitialState = makeRemote("RemoteFunction", "GetInitialState"),
-	-- Candlestick chart remotes
-	RequestCandles  = makeRemote("RemoteEvent", "RequestCandles"),
-	CandleHistory   = makeRemote("RemoteEvent", "CandleHistory"),
-	CandleUpdate    = makeRemote("RemoteEvent", "CandleUpdate"),
-	CandleAppend    = makeRemote("RemoteEvent", "CandleAppend"),
+	-- Market + Chart (§3.1)
+	RequestMarketSnapshot = makeRemote("RemoteEvent", "RequestMarketSnapshot"),
+	MarketSnapshot        = makeRemote("RemoteEvent", "MarketSnapshot"),
+	CoinHistory           = makeRemote("RemoteEvent", "CoinHistory"),
+	RequestCandles        = makeRemote("RemoteEvent", "RequestCandles"),
+	CandleHistory         = makeRemote("RemoteEvent", "CandleHistory"),
+	CandleUpdate          = makeRemote("RemoteEvent", "CandleUpdate"),
+	CandleAppend          = makeRemote("RemoteEvent", "CandleAppend"),
+	-- Trading (§3.2)
+	RequestTrade          = makeRemote("RemoteEvent", "RequestTrade"),
+	TradeResult           = makeRemote("RemoteEvent", "TradeResult"),
+	-- Player state
+	PlayerState           = makeRemote("RemoteEvent", "PlayerState"),
+	GetInitialState       = makeRemote("RemoteFunction", "GetInitialState"),
+	-- Events
+	NewsEvent             = makeRemote("RemoteEvent", "NewsEvent"),
 	-- Tutorial
-	TutorialDone    = makeRemote("RemoteEvent", "TutorialDone"),
+	TutorialDone          = makeRemote("RemoteEvent", "TutorialDone"),
 }
 
 -- =============================================
@@ -62,26 +66,26 @@ TradeService.Init(remotes, MarketService, PlayerService)
 
 print("[Server] All services initialized.")
 
--- Wally proof: verify package management works
+-- Wally proof
 local wallyProof = require(ReplicatedStorage.Shared.WallyProof)
-print("[Server] ✓ Wally packages loaded successfully:", wallyProof)
+print("[Server] Wally packages loaded:", wallyProof)
 
 -- =============================================
--- 4) Build the 3D trading floor
+-- 4) Build the 3D trading floor (Station A)
 -- =============================================
-local _floorModel, _stations = TradingFloor.Build()
-print("[Server] Trading floor built.")
+local _floorModel, _terminals, _tickerStrip = TradingFloor.Build()
+print("[Server] Trading floor built — Station A ready.")
 
 -- =============================================
 -- 5) Wire remote handlers
 -- =============================================
 
--- Trade requests: validate and execute server-side
+-- Trade requests
 remotes.RequestTrade.OnServerEvent:Connect(function(player, action, coinId, qty)
 	TradeService.ExecuteTrade(player, action, coinId, qty)
 end)
 
--- Tutorial done: client tells server when tutorial is completed
+-- Tutorial done
 remotes.TutorialDone.OnServerEvent:Connect(function(player)
 	local state = PlayerService.GetState(player)
 	if state then
@@ -89,7 +93,7 @@ remotes.TutorialDone.OnServerEvent:Connect(function(player)
 	end
 end)
 
--- Initial state request: client calls once on load
+-- Initial state request (RemoteFunction — client calls once on load)
 remotes.GetInitialState.OnServerInvoke = function(player)
 	local retries = 0
 	while not PlayerService.GetState(player) and retries < 20 do
@@ -117,18 +121,17 @@ remotes.GetInitialState.OnServerInvoke = function(player)
 end
 
 -- =============================================
--- 6) Player lifecycle — characters walk freely
+-- 6) Player lifecycle
 -- =============================================
 Players.PlayerAdded:Connect(function(player)
 	PlayerService.OnPlayerAdded(player)
 
-	-- Set up character for trading floor
 	player.CharacterAdded:Connect(function(character)
 		task.defer(function()
 			local humanoid = character:FindFirstChildOfClass("Humanoid")
 			if humanoid then
-				humanoid.WalkSpeed = 20   -- normal walk speed
-				humanoid.JumpPower = 50   -- normal jump
+				humanoid.WalkSpeed = 20
+				humanoid.JumpPower = 50
 			end
 		end)
 	end)
@@ -138,7 +141,7 @@ Players.PlayerRemoving:Connect(function(player)
 	PlayerService.OnPlayerRemoving(player)
 end)
 
--- Handle existing players (if script loads late)
+-- Handle existing players (late load)
 for _, player in Players:GetPlayers() do
 	task.spawn(function()
 		PlayerService.OnPlayerAdded(player)
@@ -159,4 +162,4 @@ MarketService.StartLoop()
 EventService.StartLoop()
 PlayerService.StartAutosave()
 
-print("[Server] Trading simulator running! Walk around and trade!")
+print("[Server] TradingSim running — Milestone 1: Global Market + Terminal UI")

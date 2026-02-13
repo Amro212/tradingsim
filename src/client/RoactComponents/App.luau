@@ -1,25 +1,25 @@
 --[[
 	App.luau — Root Roact component that composes all UI elements.
 	Mounted into the ScreenGui by init.client.luau.
+	M1: Added MarketList for the global market overview.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Roact = require(ReplicatedStorage.Packages.Roact)
 
-local TopBar        = require(script.Parent.TopBar)
-local TradeModal    = require(script.Parent.TradeModal)
-local BottomPanel   = require(script.Parent.BottomPanel)
-local Toast         = require(script.Parent.Toast)
+local TopBar          = require(script.Parent.TopBar)
+local MarketList      = require(script.Parent.MarketList)
+local TradeModal      = require(script.Parent.TradeModal)
+local BottomPanel     = require(script.Parent.BottomPanel)
+local Toast           = require(script.Parent.Toast)
 local TutorialOverlay = require(script.Parent.TutorialOverlay)
 
 local App = Roact.Component:extend("App")
 
 function App:init()
-	-- Subscribe to store changes → force update
 	self._unsubscribe = self.props.store:subscribe(function()
-		-- Safely re-render when store changes
 		if self._isMounted then
-			self:setState({}) -- trigger re-render
+			self:setState({})
 		end
 	end)
 	self._isMounted = false
@@ -46,6 +46,11 @@ function App:render()
 		BorderSizePixel = 0,
 	}, {
 		TopBarEl = Roact.createElement(TopBar, {
+			store = store,
+		}),
+
+		-- M1: Market list (opens when player interacts with terminal)
+		MarketListEl = Roact.createElement(MarketList, {
 			store = store,
 		}),
 

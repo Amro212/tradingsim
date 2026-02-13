@@ -4,9 +4,8 @@
 	stochastic random walk with drift, volatility, and event modifiers.
 	Broadcasts compressed snapshots to all clients at a controlled rate.
 
-	NEW: OHLC candle aggregation per coin per timeframe.
-	Server stores ring-buffered candle history and broadcasts live
-	updates + finalized candles to subscribed clients.
+	CoinState includes: price, changePct, volume, meta, phase (per §1.1, §4 Step 1).
+	OHLC candle aggregation per coin per timeframe (carried forward for M2).
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -17,15 +16,35 @@ local CoinsModule = require(ReplicatedStorage.Shared.Coins)
 
 local MarketService = {}
 
--- Types
+-- Types (§1.1 CoinState — fields relevant to M1+)
 export type CoinState = {
+	-- Identity
 	id: string,
+	symbol: string,
+	name: string,
+	meta: string,
+	phase: string,
+	-- Market
 	price: number,
 	lastPrice: number,
 	changePct: number,
 	volume: number,
 	high: number,
 	low: number,
+	-- Memecoin realism (seeded, active in later milestones)
+	liquidity: number,
+	volatility: number,
+	drift: number,
+	devTrust: number,
+	communityStrength: number,
+	whaleConcentration: number,
+	devControl: number,
+	hype: number,
+	-- Lifecycle
+	isTradable: boolean,
+	isRuggable: boolean,
+	eventModifiers: {},
+	-- Legacy (ring buffer for line charts)
 	priceHistory: {number},
 	historyIndex: number,
 }
@@ -41,7 +60,7 @@ export type Candle = {
 
 -- Internal state
 local coinStates: {[string]: CoinState} = {}
-local rng = Random.new(os.time()) -- seeded RNG for determinism within session
+local rng = Random.new(os.time())
 local activeModifiers: {[string]: {drift: number, volMult: number, expiry: number}} = {}
 
 -- Remote references (set during Init)
@@ -51,6 +70,7 @@ local candleHistoryRemote: RemoteEvent = nil
 local candleUpdateRemote: RemoteEvent = nil
 local candleAppendRemote: RemoteEvent = nil
 local requestCandlesRemote: RemoteEvent = nil
+local requestMarketSnapshotRemote: RemoteEvent = nil
 
 -- Timers
 local simAccumulator = 0
@@ -60,25 +80,20 @@ local candleUpdateAccumulator = 0
 -------------------------------------------------
 -- OHLC Candle aggregation state
 -------------------------------------------------
--- candlesHistory[coinId][timeframeKey] = { candles = {Candle}, head = number, count = number }
 local candlesHistory: {[string]: {[string]: { candles: {Candle}, head: number, count: number }}} = {}
--- currentCandle[coinId][timeframeKey] = Candle
 local currentCandle: {[string]: {[string]: Candle}} = {}
 
 local TIMEFRAMES = Config.TIMEFRAMES
 local MAX_CANDLE_HISTORY = Config.MAX_CANDLE_HISTORY
 
--- Helper: get server time in seconds (monotonic)
 local function serverTime(): number
 	return workspace:GetServerTimeNow()
 end
 
--- Helper: compute candle start time for a given timeframe
 local function candleStartTime(now: number, tfSeconds: number): number
 	return math.floor(now / tfSeconds) * tfSeconds
 end
 
--- Initialize candle buffers for all coins and timeframes
 local function initCandleBuffers()
 	for _, def in CoinsModule.List do
 		candlesHistory[def.id] = {}
@@ -89,13 +104,11 @@ local function initCandleBuffers()
 				head = 1,
 				count = 0,
 			}
-			-- currentCandle starts nil; created on first tick
 			currentCandle[def.id][tfKey] = nil
 		end
 	end
 end
 
--- Push a finalized candle into the ring buffer
 local function pushCandleToHistory(coinId: string, tfKey: string, candle: Candle)
 	local buf = candlesHistory[coinId][tfKey]
 	if not buf then return end
@@ -104,15 +117,11 @@ local function pushCandleToHistory(coinId: string, tfKey: string, candle: Candle
 	buf.count = math.min(buf.count + 1, MAX_CANDLE_HISTORY)
 end
 
--- Get ordered candle history (oldest→newest) from ring buffer
 local function getOrderedCandles(coinId: string, tfKey: string, limit: number): {Candle}
 	local buf = candlesHistory[coinId][tfKey]
 	if not buf or buf.count == 0 then return {} end
-
 	local count = math.min(buf.count, limit)
 	local result = table.create(count)
-	-- start index: head points to where the NEXT candle will be written
-	-- so oldest = head - count (wrapped)
 	local startIdx = ((buf.head - count - 1) % MAX_CANDLE_HISTORY) + 1
 	for i = 1, count do
 		local idx = ((startIdx + i - 2) % MAX_CANDLE_HISTORY) + 1
@@ -121,23 +130,18 @@ local function getOrderedCandles(coinId: string, tfKey: string, limit: number): 
 	return result
 end
 
--- Process a price tick for OHLC candle aggregation
 local function updateCandles(coinId: string, price: number, tickVolume: number)
 	local now = serverTime()
 	for tfKey, tfSeconds in TIMEFRAMES do
 		local cStart = candleStartTime(now, tfSeconds)
 		local cur = currentCandle[coinId][tfKey]
-
 		if cur == nil or cur.tOpen ~= cStart then
-			-- Finalize the old candle (if any) and push to history
 			if cur then
 				pushCandleToHistory(coinId, tfKey, cur)
-				-- Broadcast finalized candle to all clients
 				if candleAppendRemote then
 					candleAppendRemote:FireAllClients(coinId, tfKey, cur)
 				end
 			end
-			-- Create new candle
 			currentCandle[coinId][tfKey] = {
 				tOpen = cStart,
 				open = price,
@@ -147,7 +151,6 @@ local function updateCandles(coinId: string, price: number, tickVolume: number)
 				volume = tickVolume,
 			}
 		else
-			-- Update existing candle
 			cur.high = math.max(cur.high, price)
 			cur.low = math.min(cur.low, price)
 			cur.close = price
@@ -157,68 +160,86 @@ local function updateCandles(coinId: string, price: number, tickVolume: number)
 end
 
 -------------------------------------------------
--- Initialize coin states from definitions
+-- Initialize coin states from definitions (§1.1 CoinState)
 -------------------------------------------------
 function MarketService.Init(remotes: {[string]: any})
 	marketSnapshotRemote = remotes.MarketSnapshot
 	coinHistoryRemote = remotes.CoinHistory
-
-	-- New candle remotes (may be nil if not yet created; checked before use)
 	candleHistoryRemote = remotes.CandleHistory
 	candleUpdateRemote = remotes.CandleUpdate
 	candleAppendRemote = remotes.CandleAppend
 	requestCandlesRemote = remotes.RequestCandles
+	requestMarketSnapshotRemote = remotes.RequestMarketSnapshot
 
 	for _, def in CoinsModule.List do
 		local history = table.create(Config.MAX_HISTORY_POINTS, def.basePrice)
 		coinStates[def.id] = {
+			-- Identity
 			id = def.id,
+			symbol = def.ticker,
+			name = def.name,
+			meta = def.meta,
+			phase = def.initialPhase or "HYPE",
+			-- Market
 			price = def.basePrice,
 			lastPrice = def.basePrice,
 			changePct = 0,
 			volume = 0,
 			high = def.basePrice,
 			low = def.basePrice,
+			-- Memecoin realism (seeded defaults, used in later milestones)
+			liquidity = def.liquidity,
+			volatility = def.volatility,
+			drift = def.trendBias,
+			devTrust = 60,
+			communityStrength = 50,
+			whaleConcentration = 30,
+			devControl = 40,
+			hype = 50,
+			-- Lifecycle
+			isTradable = true,
+			isRuggable = false,
+			eventModifiers = {},
+			-- Legacy ring buffer
 			priceHistory = history,
 			historyIndex = 1,
 		}
 	end
 
-	-- Initialize candle ring buffers
 	initCandleBuffers()
 
-	-- Listen for client requesting coin history (legacy line chart)
+	-- Legacy line chart history request
 	coinHistoryRemote.OnServerEvent:Connect(function(player, coinId)
 		if type(coinId) ~= "string" then return end
 		local state = coinStates[coinId]
 		if not state then return end
-		-- Send ordered history from ring buffer
 		local ordered = MarketService.GetOrderedHistory(coinId)
 		coinHistoryRemote:FireClient(player, coinId, ordered)
 	end)
 
-	-- Listen for client requesting OHLC candle history
+	-- OHLC candle history request
 	if requestCandlesRemote then
 		requestCandlesRemote.OnServerEvent:Connect(function(player, coinId, timeframe, limit)
-			-- Validate inputs
 			if type(coinId) ~= "string" then return end
 			if type(timeframe) ~= "string" then return end
 			if TIMEFRAMES[timeframe] == nil then return end
 			if not coinStates[coinId] then return end
-
 			limit = type(limit) == "number" and math.clamp(math.floor(limit), 1, Config.MAX_CANDLE_REQUEST) or Config.MAX_CANDLE_REQUEST
-
 			local candles = getOrderedCandles(coinId, timeframe, limit)
-
-			-- Append the current (live) candle as the newest element
 			local cur = currentCandle[coinId][timeframe]
 			if cur then
 				table.insert(candles, cur)
 			end
-
 			if candleHistoryRemote then
 				candleHistoryRemote:FireClient(player, coinId, timeframe, candles)
 			end
+		end)
+	end
+
+	-- RequestMarketSnapshot (§3.1 Client→Server)
+	if requestMarketSnapshotRemote then
+		requestMarketSnapshotRemote.OnServerEvent:Connect(function(player)
+			marketSnapshotRemote:FireClient(player, MarketService.GetFullSnapshot())
 		end)
 	end
 end
@@ -241,26 +262,25 @@ local function tickCoin(state: CoinState, def: any, dt: number)
 		end
 	end
 
-	-- Stochastic random walk: price * (1 + drift*dt + vol*sqrt(dt)*Z)
-	local Z = rng:NextNumber() * 2 - 1  -- uniform approx of normal
-	-- Add a second sample for better distribution
+	-- Stochastic random walk
+	local Z = rng:NextNumber() * 2 - 1
 	Z = Z + (rng:NextNumber() * 2 - 1)
-	Z = Z / 1.414 -- normalize
+	Z = Z / 1.414
 
 	local sqrtDt = math.sqrt(dt)
-	local change = drift * dt + vol * sqrtDt * Z * 0.05 -- scale factor
+	local change = drift * dt + vol * sqrtDt * Z * 0.05
 
-	-- Liquidity dampening: high liquidity = less extreme moves
+	-- Liquidity dampening
 	change = change * (1 - def.liquidity * 0.3)
 
 	local newPrice = state.price * (1 + change)
 
-	-- Clamp to floor/ceiling
+	-- Clamp
 	local floor = def.basePrice * Config.PRICE_FLOOR_MULT
 	local ceil = def.basePrice * Config.PRICE_CEIL_MULT
 	newPrice = math.clamp(newPrice, floor, ceil)
 
-	-- Simulate tick volume (proportional to volatility and random)
+	-- Tick volume
 	local tickVolume = math.floor(rng:NextNumber() * 50 * def.volatility + 1)
 
 	-- Update state
@@ -271,11 +291,11 @@ local function tickCoin(state: CoinState, def: any, dt: number)
 	state.low = math.min(state.low, newPrice)
 	state.volume = state.volume + tickVolume
 
-	-- Push to ring buffer (legacy line chart)
+	-- Legacy ring buffer
 	state.priceHistory[state.historyIndex] = newPrice
 	state.historyIndex = (state.historyIndex % Config.MAX_HISTORY_POINTS) + 1
 
-	-- Update OHLC candles for all timeframes
+	-- OHLC candle update
 	updateCandles(state.id, newPrice, tickVolume)
 end
 
@@ -289,16 +309,20 @@ function MarketService.Tick(dt: number)
 end
 
 -------------------------------------------------
--- Broadcast snapshot to all clients
+-- Build snapshot payload (§3.1 MarketSnapshot format)
 -------------------------------------------------
-function MarketService.BroadcastSnapshot()
+local function buildSnapshotPayload(): {}
 	local coins = {}
 	for _, def in CoinsModule.List do
 		local s = coinStates[def.id]
 		if s then
 			table.insert(coins, {
 				id = s.id,
-				p = math.floor(s.price * 10000) / 10000,  -- 4 decimals
+				s = s.symbol,    -- symbol (compact key)
+				n = s.name,      -- name
+				m = s.meta,      -- meta category
+				ph = s.phase,    -- lifecycle phase
+				p = math.floor(s.price * 10000) / 10000,
 				cp = math.floor(s.changePct * 10000) / 10000,
 				v = math.floor(s.volume),
 				lp = math.floor(s.lastPrice * 10000) / 10000,
@@ -306,16 +330,24 @@ function MarketService.BroadcastSnapshot()
 		end
 	end
 
-	local snapshot = {
+	return {
 		t = workspace:GetServerTimeNow(),
 		coins = coins,
+		mh = {},   -- metaHeat (placeholder for M5)
+		hm = {},   -- hotMetas (placeholder for M5)
+		news = {},  -- news (placeholder for M4)
 	}
-
-	marketSnapshotRemote:FireAllClients(snapshot)
 end
 
 -------------------------------------------------
--- Broadcast live candle updates at controlled rate
+-- Broadcast snapshot to all clients
+-------------------------------------------------
+function MarketService.BroadcastSnapshot()
+	marketSnapshotRemote:FireAllClients(buildSnapshotPayload())
+end
+
+-------------------------------------------------
+-- Broadcast live candle updates
 -------------------------------------------------
 function MarketService.BroadcastCandleUpdates()
 	if not candleUpdateRemote then return end
@@ -330,25 +362,22 @@ function MarketService.BroadcastCandleUpdates()
 end
 
 -------------------------------------------------
--- Start the update loop (called from init.server)
+-- Start the update loop
 -------------------------------------------------
 function MarketService.StartLoop()
 	RunService.Heartbeat:Connect(function(dt)
-		-- Sim tick
 		simAccumulator = simAccumulator + dt
 		while simAccumulator >= Config.SIM_TICK do
 			MarketService.Tick(Config.SIM_TICK)
 			simAccumulator = simAccumulator - Config.SIM_TICK
 		end
 
-		-- Broadcast tick (market snapshot)
 		broadcastAccumulator = broadcastAccumulator + dt
 		if broadcastAccumulator >= Config.BROADCAST_INTERVAL then
 			MarketService.BroadcastSnapshot()
 			broadcastAccumulator = broadcastAccumulator - Config.BROADCAST_INTERVAL
 		end
 
-		-- Candle update broadcast (live updates at controlled rate)
 		candleUpdateAccumulator = candleUpdateAccumulator + dt
 		if candleUpdateAccumulator >= Config.CANDLE_UPDATE_INTERVAL then
 			MarketService.BroadcastCandleUpdates()
@@ -358,7 +387,7 @@ function MarketService.StartLoop()
 end
 
 -------------------------------------------------
--- Public API for other services
+-- Public API
 -------------------------------------------------
 function MarketService.GetPrice(coinId: string): number?
 	local state = coinStates[coinId]
@@ -380,7 +409,6 @@ function MarketService.AddVolume(coinId: string, qty: number)
 	end
 end
 
--- Apply an event modifier to a coin
 function MarketService.ApplyModifier(coinId: string, drift: number, volMult: number, duration: number)
 	activeModifiers[coinId] = {
 		drift = drift,
@@ -389,11 +417,9 @@ function MarketService.ApplyModifier(coinId: string, drift: number, volMult: num
 	}
 end
 
--- Get ordered history (unrolled from ring buffer) — legacy line chart
 function MarketService.GetOrderedHistory(coinId: string): {number}
 	local state = coinStates[coinId]
 	if not state then return {} end
-
 	local ordered = {}
 	local idx = state.historyIndex
 	for _ = 1, Config.MAX_HISTORY_POINTS do
@@ -403,25 +429,9 @@ function MarketService.GetOrderedHistory(coinId: string): {number}
 	return ordered
 end
 
--- Get a compact snapshot for a single player (used on join)
+-- Full snapshot for single player (used on join via GetInitialState)
 function MarketService.GetFullSnapshot(): {}
-	local coins = {}
-	for _, def in CoinsModule.List do
-		local s = coinStates[def.id]
-		if s then
-			table.insert(coins, {
-				id = s.id,
-				p = math.floor(s.price * 10000) / 10000,
-				cp = math.floor(s.changePct * 10000) / 10000,
-				v = math.floor(s.volume),
-				lp = math.floor(s.lastPrice * 10000) / 10000,
-			})
-		end
-	end
-	return {
-		t = workspace:GetServerTimeNow(),
-		coins = coins,
-	}
+	return buildSnapshotPayload()
 end
 
 return MarketService

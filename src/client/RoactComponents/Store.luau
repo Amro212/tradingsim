@@ -2,6 +2,7 @@
 	Store.luau — Centralized state container for the trading UI.
 	All Roact components read from this store and subscribe to changes.
 	Remote events dispatch actions into this store.
+	M1: Added tradingUIOpen for market list screen flow.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -20,20 +21,21 @@ function Store.new()
 	self._state = {
 		-- Player
 		cash = Config.STARTING_CASH,
-		holdings = {},        -- { [coinId]: { qty: number, avgEntry: number } }
+		holdings = {},
 		totalValue = Config.STARTING_CASH,
 		totalPnL = 0,
 		tutorialDone = false,
 		tradeHistory = {},
 
 		-- Market
-		marketData = {},      -- { [coinId]: { id, p, cp, ... } }
+		marketData = {},      -- { [coinId]: { id, s, n, m, ph, p, cp, v, ... } }
 
 		-- UI state
-		selectedCoinId = nil, -- string?
+		tradingUIOpen = false,     -- M1: whether market list screen is open
+		selectedCoinId = nil,
 		tradeModalOpen = false,
 		bottomPanelOpen = false,
-		activeTab = 1,        -- 1=Portfolio, 2=History, 3=News
+		activeTab = 1,
 		currentAction = "BUY",
 		qtyText = "",
 
@@ -55,7 +57,6 @@ end
 
 function Store:subscribe(listener: () -> ())
 	table.insert(self._listeners, listener)
-	-- Return unsubscribe function
 	return function()
 		for i, l in self._listeners do
 			if l == listener then
@@ -88,7 +89,7 @@ function Store:_recomputePortfolio()
 end
 
 -- ═══════════════════════════════════════════
--- ACTIONS (called by init.client.luau on remote events)
+-- ACTIONS
 -- ═══════════════════════════════════════════
 
 function Store:setPlayerState(state)
@@ -110,13 +111,33 @@ function Store:setPlayerState(state)
 end
 
 function Store:updateMarket(snapshot)
-	for _, coinData in snapshot.coins do
-		self._state.marketData[coinData.id] = coinData
+	if snapshot and snapshot.coins then
+		for _, coinData in snapshot.coins do
+			self._state.marketData[coinData.id] = coinData
+		end
 	end
 	self:_recomputePortfolio()
 	self:_notify()
 end
 
+-- M1: Open the Trading UI (market list screen)
+function Store:openTradingUI()
+	self._state.tradingUIOpen = true
+	self._state.tradeModalOpen = false
+	self._state.selectedCoinId = nil
+	self:_notify()
+end
+
+-- M1: Close the entire Trading UI
+function Store:closeTradingUI()
+	self._state.tradingUIOpen = false
+	self._state.tradeModalOpen = false
+	self._state.selectedCoinId = nil
+	self._state.qtyText = ""
+	self:_notify()
+end
+
+-- Select a coin from market list → open trade modal
 function Store:selectCoin(coinId: string)
 	self._state.selectedCoinId = coinId
 	self._state.currentAction = "BUY"
@@ -125,8 +146,11 @@ function Store:selectCoin(coinId: string)
 	self:_notify()
 end
 
+-- Close trade modal → back to market list
 function Store:closeModal()
 	self._state.tradeModalOpen = false
+	self._state.selectedCoinId = nil
+	self._state.qtyText = ""
 	self:_notify()
 end
 
@@ -152,9 +176,9 @@ end
 
 function Store:onTradeResult(result)
 	if result.ok then
-		self:showToast("✅ " .. result.message, true)
+		self:showToast(result.message, true)
 	else
-		self:showToast("❌ " .. result.message, false)
+		self:showToast(result.message, false)
 	end
 	if result.newCash then self._state.cash = result.newCash end
 	if result.coinId and result.holding then
@@ -200,7 +224,6 @@ end
 function Store:setTutorialDone()
 	self._state.tutorialDone = true
 	self:_notify()
-	-- Notify server
 	local remotes = ReplicatedStorage:FindFirstChild("Remotes")
 	if remotes then
 		local td = remotes:FindFirstChild("TutorialDone")
@@ -234,6 +257,24 @@ function Store:getSelectedCoinChange(): number
 	if not id then return 0 end
 	local data = self._state.marketData[id]
 	return data and data.cp or 0
+end
+
+-- Get all coins sorted by absolute changePct (top movers)
+function Store:getSortedCoins(): {{}}
+	local list = {}
+	for _, coinDef in Coins.List do
+		local data = self._state.marketData[coinDef.id]
+		if data then
+			table.insert(list, {
+				def = coinDef,
+				data = data,
+			})
+		end
+	end
+	table.sort(list, function(a, b)
+		return math.abs(a.data.cp or 0) > math.abs(b.data.cp or 0)
+	end)
+	return list
 end
 
 function Store:setQuickPercent(pct: number)

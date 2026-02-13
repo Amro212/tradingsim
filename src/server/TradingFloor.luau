@@ -1,23 +1,30 @@
 --[[
-	TradingFloor.luau — Builds the 3D trading floor environment.
-	Creates coin stations arranged in a circle, each with a screen Part
-	for SurfaceGui, ProximityPrompt, and accent lighting.
-	Runs server-side; Parts replicate to all clients.
+	TradingFloor.luau — Builds the 3D trading hub environment.
+	Station A: Trading Terminal Row (WORLD_SPEC §1 Station A)
+	- 8 trading terminals with monitors, ProximityPrompts
+	- Ticker strip above the terminals
+	- Central atrium with spawn facing terminals
+	Future stations (B–F) will be added in later milestones.
 ]]
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Lighting = game:GetService("Lighting")
-
-local CoinsModule = require(ReplicatedStorage.Shared.Coins)
 
 local TradingFloor = {}
 
-local STATION_RADIUS = 45
+-- Layout constants
 local FLOOR_SIZE = 200
 local FLOOR_COLOR = Color3.fromRGB(18, 18, 28)
-local STATION_BASE_COLOR = Color3.fromRGB(26, 26, 46)
-local SCREEN_COLOR = Color3.fromRGB(12, 12, 30)
+local DESK_COLOR = Color3.fromRGB(26, 26, 46)
+local MONITOR_COLOR = Color3.fromRGB(10, 10, 25)
 local PILLAR_COLOR = Color3.fromRGB(22, 33, 62)
+local ACCENT_COLOR = Color3.fromRGB(88, 166, 255) -- blue neon
+local TICKER_COLOR = Color3.fromRGB(8, 8, 20)
+
+-- Terminal Row config
+local TERMINAL_COUNT = 8
+local TERMINAL_SPACING = 11    -- studs between terminal centers
+local TERMINAL_ROW_Z = -55     -- Z position of terminal row
+local TERMINAL_Y = 0           -- floor level
 
 -------------------------------------------------
 -- Helper: create a Part with properties
@@ -43,80 +50,62 @@ local function makePart(props): Part
 end
 
 -------------------------------------------------
--- Build the floor and environment
+-- Build the floor, environment, and atmosphere
 -------------------------------------------------
-function TradingFloor.BuildEnvironment()
-	local floorModel = Instance.new("Model")
-	floorModel.Name = "TradingFloor"
-	floorModel.Parent = workspace
-
+function TradingFloor.BuildEnvironment(parent: Model)
 	-- Main floor
 	makePart({
 		name = "Floor",
 		size = Vector3.new(FLOOR_SIZE, 2, FLOOR_SIZE),
 		cframe = CFrame.new(0, -1, 0),
 		color = FLOOR_COLOR,
-		parent = floorModel,
+		parent = parent,
 	})
 
-	-- Center platform (cylinder)
-	local centerPlatform = makePart({
-		name = "CenterPlatform",
-		size = Vector3.new(20, 0.4, 20),
-		cframe = CFrame.new(0, 0.2, 0),
-		color = Color3.fromRGB(25, 25, 40),
-		parent = floorModel,
+	-- Back wall behind terminals
+	makePart({
+		name = "BackWall",
+		size = Vector3.new(FLOOR_SIZE * 0.6, 20, 2),
+		cframe = CFrame.new(0, 10, TERMINAL_ROW_Z - 6),
+		color = Color3.fromRGB(14, 14, 24),
+		parent = parent,
 	})
-	-- Make it a cylinder shape
-	local mesh = Instance.new("CylinderMesh")
-	mesh.Parent = centerPlatform
 
-	-- Center glow ring
-	local glowRing = makePart({
-		name = "GlowRing",
-		size = Vector3.new(22, 0.1, 22),
-		cframe = CFrame.new(0, 0.05, 0),
-		color = Color3.fromRGB(88, 166, 255),
+	-- Accent line along back wall base
+	makePart({
+		name = "WallAccent",
+		size = Vector3.new(TERMINAL_COUNT * TERMINAL_SPACING + 10, 0.15, 0.15),
+		cframe = CFrame.new(0, 0.1, TERMINAL_ROW_Z - 4.9),
+		color = ACCENT_COLOR,
 		material = Enum.Material.Neon,
-		transparency = 0.6,
 		canCollide = false,
 		castShadow = false,
-		parent = floorModel,
+		parent = parent,
 	})
-	local glowMesh = Instance.new("CylinderMesh")
-	glowMesh.Parent = glowRing
 
-	-- Floor guide lines from center to each station
-	for i = 1, #CoinsModule.List do
-		local angle = (i - 1) * (2 * math.pi / #CoinsModule.List)
-		local midX = math.sin(angle) * (STATION_RADIUS / 2)
-		local midZ = math.cos(angle) * (STATION_RADIUS / 2)
-		local lineAngle = math.atan2(math.sin(angle), math.cos(angle))
+	-- Floor glow strip in front of terminals
+	makePart({
+		name = "FloorGlowStrip",
+		size = Vector3.new(TERMINAL_COUNT * TERMINAL_SPACING + 20, 0.05, 3),
+		cframe = CFrame.new(0, 0.025, TERMINAL_ROW_Z + 5),
+		color = ACCENT_COLOR,
+		material = Enum.Material.Neon,
+		transparency = 0.8,
+		canCollide = false,
+		castShadow = false,
+		parent = parent,
+	})
 
-		local line = makePart({
-			name = "GuideLine_" .. i,
-			size = Vector3.new(0.3, 0.05, STATION_RADIUS - 12),
-			cframe = CFrame.new(midX, 0.025, midZ)
-				* CFrame.Angles(0, lineAngle, 0),
-			color = Color3.fromRGB(40, 40, 65),
-			material = Enum.Material.Neon,
-			transparency = 0.7,
-			canCollide = false,
-			castShadow = false,
-			parent = floorModel,
-		})
-	end
-
-	-- SpawnLocation at center
+	-- SpawnLocation facing terminals
 	local spawn = Instance.new("SpawnLocation")
 	spawn.Name = "CenterSpawn"
-	spawn.Size = Vector3.new(6, 0.2, 6)
-	spawn.CFrame = CFrame.new(0, 0.1, 0)
+	spawn.Size = Vector3.new(8, 0.2, 8)
+	spawn.CFrame = CFrame.new(0, 0.1, 15)
 	spawn.Anchored = true
 	spawn.CanCollide = false
 	spawn.Transparency = 1
 	spawn.Duration = 0
-	spawn.Parent = floorModel
+	spawn.Parent = parent
 
 	-- Atmosphere
 	local atmo = Instance.new("Atmosphere")
@@ -135,188 +124,203 @@ function TradingFloor.BuildEnvironment()
 	bloom.Threshold = 0.8
 	bloom.Parent = Lighting
 
-	-- Color correction for mood
+	-- Color correction
 	local cc = Instance.new("ColorCorrectionEffect")
 	cc.Brightness = -0.05
 	cc.Contrast = 0.1
 	cc.Saturation = 0.15
 	cc.TintColor = Color3.fromRGB(230, 230, 255)
 	cc.Parent = Lighting
-
-	return floorModel
 end
 
 -------------------------------------------------
--- Build a single coin station
+-- Build a single trading terminal (desk + monitor)
 -------------------------------------------------
-function TradingFloor.BuildStation(coinDef, stationCF: CFrame, parent: Instance): Model
-	local accentColor = Color3.new(
-		coinDef.accentColor[1],
-		coinDef.accentColor[2],
-		coinDef.accentColor[3]
-	)
-
+function TradingFloor.BuildTerminal(index: number, posX: number, parent: Instance): Model
 	local model = Instance.new("Model")
-	model.Name = "Station_" .. coinDef.id
+	model.Name = "Terminal_" .. index
 	model.Parent = parent
 
-	-- Base pedestal
+	local baseY = TERMINAL_Y
+	local baseZ = TERMINAL_ROW_Z
+
+	-- Desk
 	makePart({
-		name = "Base",
-		size = Vector3.new(10, 1.2, 5),
-		cframe = stationCF * CFrame.new(0, 0.6, 0),
-		color = STATION_BASE_COLOR,
+		name = "Desk",
+		size = Vector3.new(8, 1.4, 3.5),
+		cframe = CFrame.new(posX, baseY + 0.7, baseZ),
+		color = DESK_COLOR,
 		parent = model,
 	})
 
-	-- Base front accent strip (neon glow)
+	-- Desk front accent strip (neon)
 	makePart({
-		name = "BaseAccent",
-		size = Vector3.new(10, 0.12, 0.12),
-		cframe = stationCF * CFrame.new(0, 1.2, -2.5),
-		color = accentColor,
+		name = "DeskAccent",
+		size = Vector3.new(8, 0.12, 0.12),
+		cframe = CFrame.new(posX, baseY + 1.4, baseZ + 1.75),
+		color = ACCENT_COLOR,
 		material = Enum.Material.Neon,
 		canCollide = false,
 		castShadow = false,
 		parent = model,
 	})
 
-	-- Left support pillar
+	-- Keyboard detail on desk
 	makePart({
-		name = "PillarL",
-		size = Vector3.new(0.5, 4, 0.4),
-		cframe = stationCF * CFrame.new(-4.2, 3.2, 0),
+		name = "Keyboard",
+		size = Vector3.new(3, 0.1, 1.2),
+		cframe = CFrame.new(posX, baseY + 1.45, baseZ + 0.5),
+		color = Color3.fromRGB(30, 30, 50),
+		canCollide = false,
+		parent = model,
+	})
+
+	-- Monitor back stand
+	makePart({
+		name = "MonitorStand",
+		size = Vector3.new(0.4, 2.5, 0.4),
+		cframe = CFrame.new(posX, baseY + 2.65, baseZ - 0.8),
 		color = PILLAR_COLOR,
 		parent = model,
 	})
 
-	-- Right support pillar
-	makePart({
-		name = "PillarR",
-		size = Vector3.new(0.5, 4, 0.4),
-		cframe = stationCF * CFrame.new(4.2, 3.2, 0),
-		color = PILLAR_COLOR,
-		parent = model,
-	})
-
-	-- Main screen
-	local screen = makePart({
+	-- Monitor screen (SurfaceGui target, faces +Z toward player)
+	-- rotated 180 so Front face faces +Z
+	local monitor = makePart({
 		name = "Screen",
-		size = Vector3.new(9.5, 6, 0.3),
-		cframe = stationCF * CFrame.new(0, 6.2, 0)
-			* CFrame.Angles(math.rad(-5), 0, 0), -- slight tilt
-		color = SCREEN_COLOR,
+		size = Vector3.new(7, 4.5, 0.25),
+		cframe = CFrame.new(posX, baseY + 4.65, baseZ - 0.8)
+			* CFrame.Angles(math.rad(-5), math.pi, 0), -- tilt + face toward player
+		color = MONITOR_COLOR,
 		parent = model,
 	})
-	-- Tag screen with coin ID so client can find it
-	screen:SetAttribute("CoinId", coinDef.id)
+	-- Tag monitor as terminal screen
+	monitor:SetAttribute("IsTerminal", true)
+	monitor:SetAttribute("TerminalIndex", index)
 
-	-- Screen top bezel (neon accent)
+	-- Monitor bezel accent (top)
 	makePart({
 		name = "BezelTop",
-		size = Vector3.new(9.8, 0.15, 0.5),
-		cframe = stationCF * CFrame.new(0, 9.25, 0)
-			* CFrame.Angles(math.rad(-5), 0, 0),
-		color = accentColor,
+		size = Vector3.new(7.2, 0.12, 0.35),
+		cframe = CFrame.new(posX, baseY + 6.92, baseZ - 0.8)
+			* CFrame.Angles(math.rad(-5), math.pi, 0),
+		color = ACCENT_COLOR,
 		material = Enum.Material.Neon,
 		canCollide = false,
 		castShadow = false,
 		parent = model,
 	})
 
-	-- Screen bottom bezel (neon accent)
+	-- Under-desk glow
 	makePart({
-		name = "BezelBottom",
-		size = Vector3.new(9.8, 0.15, 0.5),
-		cframe = stationCF * CFrame.new(0, 3.2, 0)
-			* CFrame.Angles(math.rad(-5), 0, 0),
-		color = accentColor,
+		name = "UnderGlow",
+		size = Vector3.new(8.5, 0.05, 4),
+		cframe = CFrame.new(posX, baseY + 0.025, baseZ),
+		color = ACCENT_COLOR,
 		material = Enum.Material.Neon,
+		transparency = 0.8,
 		canCollide = false,
 		castShadow = false,
 		parent = model,
 	})
 
-	-- Floor glow pad
-	makePart({
-		name = "FloorGlow",
-		size = Vector3.new(12, 0.05, 7),
-		cframe = stationCF * CFrame.new(0, 0.025, 0),
-		color = accentColor,
-		material = Enum.Material.Neon,
-		transparency = 0.75,
-		canCollide = false,
-		castShadow = false,
-		parent = model,
-	})
-
-	-- SpotLight pointing down at station
+	-- Spotlight from above
 	local lightAnchor = makePart({
 		name = "LightAnchor",
 		size = Vector3.new(1, 1, 1),
-		cframe = stationCF * CFrame.new(0, 14, -3),
+		cframe = CFrame.new(posX, baseY + 16, baseZ - 2),
 		transparency = 1,
 		canCollide = false,
 		castShadow = false,
 		parent = model,
 	})
 	local spot = Instance.new("SpotLight")
-	spot.Brightness = 3
-	spot.Range = 25
-	spot.Angle = 45
-	spot.Color = accentColor
+	spot.Brightness = 2
+	spot.Range = 20
+	spot.Angle = 35
+	spot.Color = ACCENT_COLOR
 	spot.Face = Enum.NormalId.Bottom
 	spot.Parent = lightAnchor
 
-	-- PointLight for ambient glow in base
-	local pointLight = Instance.new("PointLight")
-	pointLight.Color = accentColor
-	pointLight.Brightness = 1.5
-	pointLight.Range = 12
-	pointLight.Parent = model.Base
-
-	-- ProximityPrompt on screen
+	-- ProximityPrompt on monitor (§Station A: ProximityPrompt on any terminal)
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.ActionText = "Trade"
-	prompt.ObjectText = coinDef.icon .. " " .. coinDef.name
-	prompt.MaxActivationDistance = 14
+	prompt.ObjectText = "Trading Terminal"
+	prompt.MaxActivationDistance = 12
 	prompt.HoldDuration = 0
 	prompt.KeyboardKeyCode = Enum.KeyCode.E
 	prompt.RequiresLineOfSight = false
-	prompt.Parent = screen
+	prompt.Parent = monitor
 
 	return model
 end
 
 -------------------------------------------------
--- Build all stations in a circle
+-- Build the ticker strip above all terminals
 -------------------------------------------------
-function TradingFloor.BuildAllStations(parent: Instance)
-	local stations = {}
-	local numCoins = #CoinsModule.List
+function TradingFloor.BuildTickerStrip(parent: Instance): Part
+	local totalWidth = TERMINAL_COUNT * TERMINAL_SPACING + 10
+	local baseZ = TERMINAL_ROW_Z
 
-	for i, coinDef in CoinsModule.List do
-		local angle = (i - 1) * (2 * math.pi / numCoins)
-		local x = math.sin(angle) * STATION_RADIUS
-		local z = math.cos(angle) * STATION_RADIUS
-		local pos = Vector3.new(x, 0, z)
+	-- Ticker backing
+	local ticker = makePart({
+		name = "TickerStrip",
+		size = Vector3.new(totalWidth, 2.5, 0.3),
+		cframe = CFrame.new(0, TERMINAL_Y + 9, baseZ - 0.8)
+			* CFrame.Angles(0, math.pi, 0), -- face toward player
+		color = TICKER_COLOR,
+		parent = parent,
+	})
+	ticker:SetAttribute("IsTicker", true)
 
-		-- Face toward center
-		local stationCF = CFrame.lookAt(pos, Vector3.new(0, 0, 0))
+	-- Ticker accent lines
+	makePart({
+		name = "TickerAccentTop",
+		size = Vector3.new(totalWidth + 2, 0.1, 0.35),
+		cframe = CFrame.new(0, TERMINAL_Y + 10.3, baseZ - 0.8),
+		color = ACCENT_COLOR,
+		material = Enum.Material.Neon,
+		canCollide = false,
+		castShadow = false,
+		parent = parent,
+	})
+	makePart({
+		name = "TickerAccentBot",
+		size = Vector3.new(totalWidth + 2, 0.1, 0.35),
+		cframe = CFrame.new(0, TERMINAL_Y + 7.7, baseZ - 0.8),
+		color = ACCENT_COLOR,
+		material = Enum.Material.Neon,
+		canCollide = false,
+		castShadow = false,
+		parent = parent,
+	})
 
-		local stationModel = TradingFloor.BuildStation(coinDef, stationCF, parent)
-		stations[coinDef.id] = stationModel
+	return ticker
+end
+
+-------------------------------------------------
+-- Build all terminals in a row
+-------------------------------------------------
+function TradingFloor.BuildTerminalRow(parent: Instance): {Model}
+	local terminals = {}
+	local startX = -(TERMINAL_COUNT - 1) * TERMINAL_SPACING / 2
+
+	for i = 1, TERMINAL_COUNT do
+		local posX = startX + (i - 1) * TERMINAL_SPACING
+		local terminal = TradingFloor.BuildTerminal(i, posX, parent)
+		table.insert(terminals, terminal)
 	end
 
-	return stations
+	return terminals
 end
 
 -------------------------------------------------
 -- Main build function
 -------------------------------------------------
 function TradingFloor.Build()
-	local floorModel = TradingFloor.BuildEnvironment()
-	local stations = TradingFloor.BuildAllStations(floorModel)
+	local floorModel = Instance.new("Model")
+	floorModel.Name = "TradingFloor"
+	floorModel.Parent = workspace
 
 	-- Remove default baseplate if it exists
 	local baseplate = workspace:FindFirstChild("Baseplate")
@@ -324,7 +328,18 @@ function TradingFloor.Build()
 		baseplate:Destroy()
 	end
 
-	return floorModel, stations
+	-- Build environment (floor, walls, lighting, spawn)
+	TradingFloor.BuildEnvironment(floorModel)
+
+	-- Build Station A: Trading Terminal Row
+	local terminals = TradingFloor.BuildTerminalRow(floorModel)
+
+	-- Build ticker strip above terminals
+	local tickerStrip = TradingFloor.BuildTickerStrip(floorModel)
+
+	print("[TradingFloor] Built Station A: " .. #terminals .. " terminals + ticker strip")
+
+	return floorModel, terminals, tickerStrip
 end
 
 return TradingFloor

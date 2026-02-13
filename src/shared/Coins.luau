@@ -14,6 +14,8 @@ export type CoinDef = {
 	trendBias: number,     -- negative = bearish, positive = bullish, 0 = neutral
 	riskTag: string,       -- "Low" | "Medium" | "High" | "Extreme"
 	icon: string,          -- emoji placeholder for UI
+	meta: string,          -- category: "AI" | "Animals" | "Gaming" | "Memes" | "ParodyPolitics"
+	initialPhase: string,  -- starting phase: "STEALTH" | "HYPE" | "DISTRIBUTION" | "BLUECHIP"
 	description: string,
 	accentColor: {number}, -- {R, G, B} 0-1 for station glow
 }
@@ -29,6 +31,8 @@ local Coins: {CoinDef} = {
 		trendBias = 0.001,
 		riskTag = "Low",
 		icon = "🟡",
+		meta = "AI",
+		initialPhase = "BLUECHIP",
 		description = "The OG. Stable and reliable.",
 		accentColor = {0.94, 0.75, 0.0},
 	},
@@ -42,6 +46,8 @@ local Coins: {CoinDef} = {
 		trendBias = 0.0005,
 		riskTag = "Low",
 		icon = "💎",
+		meta = "Gaming",
+		initialPhase = "BLUECHIP",
 		description = "Smart contracts, smart gains.",
 		accentColor = {0.38, 0.49, 0.92},
 	},
@@ -55,6 +61,8 @@ local Coins: {CoinDef} = {
 		trendBias = 0.002,
 		riskTag = "Medium",
 		icon = "🐕",
+		meta = "Animals",
+		initialPhase = "HYPE",
 		description = "Much wow. Very coin. So trade.",
 		accentColor = {0.76, 0.65, 0.20},
 	},
@@ -68,6 +76,8 @@ local Coins: {CoinDef} = {
 		trendBias = 0.0,
 		riskTag = "High",
 		icon = "🐸",
+		meta = "Memes",
+		initialPhase = "STEALTH",
 		description = "Rare Pepe energy. Handle with care.",
 		accentColor = {0.30, 0.69, 0.31},
 	},
@@ -81,6 +91,8 @@ local Coins: {CoinDef} = {
 		trendBias = 0.003,
 		riskTag = "High",
 		icon = "🌙",
+		meta = "AI",
+		initialPhase = "HYPE",
 		description = "To the moon... or to zero.",
 		accentColor = {0.61, 0.15, 0.69},
 	},
@@ -94,6 +106,8 @@ local Coins: {CoinDef} = {
 		trendBias = -0.002,
 		riskTag = "Extreme",
 		icon = "🧶",
+		meta = "ParodyPolitics",
+		initialPhase = "DISTRIBUTION",
 		description = "Will it rug? Probably. YOLO.",
 		accentColor = {0.96, 0.26, 0.21},
 	},
@@ -107,6 +121,8 @@ local Coins: {CoinDef} = {
 		trendBias = 0.001,
 		riskTag = "Medium",
 		icon = "🐱",
+		meta = "Animals",
+		initialPhase = "HYPE",
 		description = "Purrfect investment. Maybe.",
 		accentColor = {1.0, 0.41, 0.71},
 	},
@@ -120,6 +136,8 @@ local Coins: {CoinDef} = {
 		trendBias = -0.001,
 		riskTag = "Extreme",
 		icon = "💀",
+		meta = "Gaming",
+		initialPhase = "STEALTH",
 		description = "Only noobs buy this. Or geniuses?",
 		accentColor = {0.38, 0.49, 0.55},
 	},

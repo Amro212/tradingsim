@@ -1,6 +1,7 @@
 --[[
 	init.client.luau — Main client entry point (Roact version).
-	Mounts Roact app tree, wires remotes to Store, handles stations.
+	Mounts Roact app tree, wires remotes to Store, handles terminal interactions.
+	M1: Terminal Row opens MarketList; selecting a coin opens TradeModal.
 ]]
 
 local Players = game:GetService("Players")
@@ -9,7 +10,6 @@ local StarterGui = game:GetService("StarterGui")
 local UserInputService = game:GetService("UserInputService")
 
 local Roact = require(ReplicatedStorage.Packages.Roact)
-local Coins = require(ReplicatedStorage.Shared.Coins)
 local _Config = require(ReplicatedStorage.Shared.Config)
 
 local player = Players.LocalPlayer
@@ -17,10 +17,10 @@ local player = Players.LocalPlayer
 -- Roact components
 local Components = script.RoactComponents
 local App = require(Components.App)
-local StationScreen = require(Components.StationScreen)
+local TerminalScreen = require(Components.TerminalScreen)
 local StoreModule = require(Components.Store)
 
--- ChartRenderer (stays imperative, lives in Controllers/)
+-- ChartRenderer (imperative, lives in Controllers/)
 local ChartRenderer = require(script.Controllers.ChartRenderer)
 
 -- ═══════════════════════════════════════════════
@@ -42,15 +42,16 @@ end)
 -- ═══════════════════════════════════════════════
 -- Create ScreenGui
 -- ═══════════════════════════════════════════════
-local screenGui: ScreenGui = player.PlayerGui:WaitForChild("TradingUI", 10)
+local screenGui = player.PlayerGui:WaitForChild("TradingUI", 10) :: ScreenGui
 if not screenGui then
-	screenGui = Instance.new("ScreenGui")
-	screenGui.Name = "TradingUI"
-	screenGui.IgnoreGuiInset = true
-	screenGui.ResetOnSpawn = false
-	screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-	screenGui.DisplayOrder = 10
-	screenGui.Parent = player.PlayerGui
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "TradingUI"
+	gui.IgnoreGuiInset = true
+	gui.ResetOnSpawn = false
+	gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	gui.DisplayOrder = 10
+	gui.Parent = player.PlayerGui
+	screenGui = gui
 end
 
 -- ═══════════════════════════════════════════════
@@ -59,7 +60,7 @@ end
 local store = StoreModule.new()
 
 -- ═══════════════════════════════════════════════
--- Initialize ChartRenderer (colors/fonts only, no container yet)
+-- Initialize ChartRenderer
 -- ═══════════════════════════════════════════════
 ChartRenderer.Init()
 
@@ -73,10 +74,9 @@ local function requestCandles(coinId: string, timeframe: string)
 	end
 end
 
--- Callback: chart container ready from TradeModal Roact component
+-- Callback: chart container ready from TradeModal
 local function onChartReady(containerFrame: Frame)
 	ChartRenderer.SetContainer(containerFrame)
-	-- If we already have a coin selected, request candles
 	local state = store:getState()
 	if state.selectedCoinId then
 		requestCandles(state.selectedCoinId, ChartRenderer.GetTimeframe())
@@ -99,52 +99,49 @@ local appTree = Roact.mount(
 )
 
 -- ═══════════════════════════════════════════════
--- Station SurfaceGuis (Roact mounted on each 3D screen)
+-- M1: Mount TerminalScreen SurfaceGuis on terminal monitors
+-- Wire ProximityPrompts to open Trading UI (market list)
 -- ═══════════════════════════════════════════════
-local stationTrees = {}
+local terminalScreenTrees = {}
 
-local function mountStations()
+local function mountTerminals()
 	local floor = workspace:WaitForChild("TradingFloor", 30)
 	if not floor then
 		warn("[Client] TradingFloor not found!")
 		return
 	end
 
-	for _, coinDef in Coins.List do
-		local stationModel = floor:WaitForChild("Station_" .. coinDef.id, 15)
-		if stationModel then
-			local screen = stationModel:WaitForChild("Screen", 10)
-			if screen and screen:GetAttribute("CoinId") then
-				-- Mount Roact SurfaceGui
+	-- Find all terminal models and their screens
+	for _, child in floor:GetChildren() do
+		if child:IsA("Model") and child.Name:match("^Terminal_") then
+			-- Find the Screen part
+			local screen = child:FindFirstChild("Screen")
+			if screen and screen:GetAttribute("IsTerminal") then
+				-- Mount SurfaceGui showing top movers
 				local tree = Roact.mount(
-					Roact.createElement(StationScreen, {
+					Roact.createElement(TerminalScreen, {
 						store = store,
-						coinDef = coinDef,
 					}),
 					screen,
-					"StationGui"
+					"TerminalGui"
 				)
-				table.insert(stationTrees, tree)
+				table.insert(terminalScreenTrees, tree)
 
-				-- Wire ProximityPrompt
+				-- Wire ProximityPrompt → open Trading UI (generic, not coin-specific)
 				local prompt = screen:FindFirstChildOfClass("ProximityPrompt")
 				if prompt then
 					prompt.Triggered:Connect(function()
-						store:selectCoin(coinDef.id)
-						ChartRenderer.SetCoin(coinDef.id)
-						requestCandles(coinDef.id, ChartRenderer.GetTimeframe())
+						store:openTradingUI()
 					end)
 				end
-			else
-				warn("[Client] Screen not found for station: " .. coinDef.id)
 			end
-		else
-			warn("[Client] Station model not found: Station_" .. coinDef.id)
 		end
 	end
+
+	print("[Client] Mounted " .. #terminalScreenTrees .. " terminal screens")
 end
 
-task.spawn(mountStations)
+task.spawn(mountTerminals)
 
 -- ═══════════════════════════════════════════════
 -- Wire timeframe switching
@@ -156,6 +153,22 @@ ChartRenderer._onTimeframeChanged = function(newTf: string)
 		requestCandles(coinId, newTf)
 	end
 end
+
+-- ═══════════════════════════════════════════════
+-- Watch for coin selection → request candles
+-- ═══════════════════════════════════════════════
+local lastSelectedCoinId = nil
+store:subscribe(function()
+	local state = store:getState()
+	if state.selectedCoinId and state.selectedCoinId ~= lastSelectedCoinId then
+		lastSelectedCoinId = state.selectedCoinId
+		ChartRenderer.SetCoin(state.selectedCoinId)
+		requestCandles(state.selectedCoinId, ChartRenderer.GetTimeframe())
+	end
+	if not state.tradeModalOpen then
+		lastSelectedCoinId = nil
+	end
+end)
 
 -- ═══════════════════════════════════════════════
 -- Request initial state from server
@@ -238,9 +251,8 @@ Remotes:WaitForChild("NewsEvent").OnClientEvent:Connect(function(eventData)
 	store:addNewsEvent(eventData)
 end)
 
--- Legacy coin history (kept for backwards compat, unused with candles)
+-- Legacy coin history (no-op, candles take priority)
 Remotes:WaitForChild("CoinHistory").OnClientEvent:Connect(function(_coinId, _history)
-	-- No-op: candles take priority
 end)
 
 -- ═══════════════════════════════════════════════
@@ -257,7 +269,7 @@ task.spawn(function()
 end)
 
 -- ═══════════════════════════════════════════════
--- Input handling
+-- Input handling (ESC closes UI layers in order)
 -- ═══════════════════════════════════════════════
 local WALK_SPEED = 20
 local SPRINT_SPEED = 36
@@ -265,8 +277,13 @@ local SPRINT_SPEED = 36
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
 	if input.KeyCode == Enum.KeyCode.Escape then
-		if store:getState().tradeModalOpen then
+		local state = store:getState()
+		if state.tradeModalOpen then
+			-- Close trade modal → back to market list
 			store:closeModal()
+		elseif state.tradingUIOpen then
+			-- Close market list → back to walking
+			store:closeTradingUI()
 		end
 	elseif input.KeyCode == Enum.KeyCode.LeftShift then
 		local char = player.Character
@@ -288,13 +305,12 @@ UserInputService.InputEnded:Connect(function(input, _processed)
 end)
 
 -- ═══════════════════════════════════════════════
--- Start tutorial (delayed for initial load)
+-- Tutorial (delayed for initial load)
 -- ═══════════════════════════════════════════════
 task.delay(2, function()
 	local state = store:getState()
 	if not state.tutorialDone then
 		tutorialStarted = true
-		-- Re-render app with tutorial started
 		Roact.update(appTree,
 			Roact.createElement(App, {
 				store = store,
@@ -305,10 +321,4 @@ task.delay(2, function()
 	end
 end)
 
--- ═══════════════════════════════════════════════
--- Bottom panel toggle (visible from start, positioned below screen)
--- ═══════════════════════════════════════════════
--- The toggle button is built into the BottomPanel Roact component.
--- No manual wiring needed — it dispatches store:toggleBottomPanel() directly.
-
-print("[Client] Roact trading floor UI ready! Walk to a station and press E.")
+print("[Client] TradingSim UI ready — walk to a terminal and press E.")
