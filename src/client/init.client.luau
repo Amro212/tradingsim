@@ -88,9 +88,6 @@ end
 -- ═══════════════════════════════════════════════
 local tutorialStarted = false
 
--- #region agent log
-print("[DEBUG][Client] About to Roact.mount App tree...")
--- #endregion
 local appTree = Roact.mount(
 	Roact.createElement(App, {
 		store = store,
@@ -100,9 +97,6 @@ local appTree = Roact.mount(
 	screenGui,
 	"AppRoot"
 )
--- #region agent log
-print("[DEBUG][Client] Roact.mount completed successfully!")
--- #endregion
 
 -- ═══════════════════════════════════════════════
 -- Station SurfaceGuis (Roact mounted on each 3D screen)
@@ -317,7 +311,4 @@ end)
 -- The toggle button is built into the BottomPanel Roact component.
 -- No manual wiring needed — it dispatches store:toggleBottomPanel() directly.
 
--- #region agent log
-print("[DEBUG][Client] Script reached end — all remotes connected, stations mounting.")
--- #endregion
 print("[Client] Roact trading floor UI ready! Walk to a station and press E.")

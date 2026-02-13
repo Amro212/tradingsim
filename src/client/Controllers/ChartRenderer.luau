@@ -442,9 +442,6 @@ end
 -- Initialize colors/fonts from Theme (call once)
 -------------------------------------------------
 function ChartRenderer.Init()
-	-- #region agent log
-	print("[DEBUG][ChartRenderer] Init() called")
-	-- #endregion
 	local T = getTheme()
 	Colors = T.colors
 	GREEN = Colors.green
@@ -453,18 +450,12 @@ function ChartRenderer.Init()
 	TEXT_DIM = Colors.textSecondary
 	CHART_FONT = T.fonts.medium
 	CHART_FONT_LIGHT = T.fonts.light
-	-- #region agent log
-	print("[DEBUG][ChartRenderer] Init OK — Colors.bgElevated =", Colors.bgElevated)
-	-- #endregion
 end
 
 -------------------------------------------------
 -- Set the chart container (called by Roact TradeModal)
 -------------------------------------------------
 function ChartRenderer.SetContainer(container: Frame)
-	-- #region agent log
-	print("[DEBUG][ChartRenderer] SetContainer() called, container =", container)
-	-- #endregion
 	if not container then
 		warn("[ChartRenderer] SetContainer called with nil!")
 		return
@@ -477,15 +468,9 @@ function ChartRenderer.SetContainer(container: Frame)
 	-- Compute dimensions
 	chartW = chartContainer.AbsoluteSize.X
 	chartH = chartContainer.AbsoluteSize.Y
-	-- #region agent log
-	print("[DEBUG][ChartRenderer] chartW =", chartW, "chartH =", chartH)
-	-- #endregion
 
 	-- Build internal layers and pools
 	createLayers()
-	-- #region agent log
-	print("[DEBUG][ChartRenderer] createLayers() completed successfully")
-	-- #endregion
 	createCandlePool()
 	createVolumePool()
 	createGridPool()
