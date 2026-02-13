@@ -11,10 +11,16 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Formatting = require(ReplicatedStorage.Shared.Formatting)
 
-local ChartRenderer = {}
+-- Import Theme for colors/fonts (replaces UIController dependency)
+local Theme = nil -- loaded lazily to avoid circular require
+local function getTheme()
+	if not Theme then
+		Theme = require(script.Parent.Parent.RoactComponents.Theme)
+	end
+	return Theme
+end
 
--- Dependencies (set during Init)
-local UIController = nil
+local ChartRenderer = {}
 
 -- State
 local chartContainer: Frame? = nil
@@ -77,13 +83,15 @@ local timeframeBar: Frame = nil :: any
 local mouseConnection: RBXScriptConnection? = nil
 
 -------------------------------------------------
--- Colors (from UIController, cached for perf)
+-- Colors/Fonts (from Theme, cached for perf)
 -------------------------------------------------
 local Colors = nil
 local GREEN: Color3
 local RED: Color3
 local GRID_COLOR: Color3
 local TEXT_DIM: Color3
+local CHART_FONT = nil
+local CHART_FONT_LIGHT = nil
 
 -------------------------------------------------
 -- NiceStep: pick a "pretty" step for gridlines
@@ -221,7 +229,7 @@ local function createLayers()
 	tooltip = Instance.new("Frame")
 	tooltip.Name = "Tooltip"
 	tooltip.Size = UDim2.new(0, CHART.TOOLTIP_WIDTH, 0, CHART.TOOLTIP_HEIGHT)
-	tooltip.BackgroundColor3 = C.bgTertiary
+	tooltip.BackgroundColor3 = C.bgElevated
 	tooltip.BackgroundTransparency = 0.05
 	tooltip.BorderSizePixel = 0
 	tooltip.Visible = false
@@ -240,7 +248,7 @@ local function createLayers()
 		lbl.Size = UDim2.new(1, -12, 0, 13)
 		lbl.Position = UDim2.new(0, 6, 0, 4 + (i - 1) * 13)
 		lbl.BackgroundTransparency = 1
-		lbl.FontFace = UIController.FONT_LIGHT
+		lbl.FontFace = CHART_FONT_LIGHT
 		lbl.TextSize = 10
 		lbl.TextColor3 = C.textPrimary
 		lbl.TextXAlignment = Enum.TextXAlignment.Left
@@ -331,7 +339,7 @@ local function createPriceLabelPool()
 		pl.Name = "PL" .. i
 		pl.Size = UDim2.new(1, -4, 0, 12)
 		pl.BackgroundTransparency = 1
-		pl.FontFace = UIController.FONT_LIGHT
+		pl.FontFace = CHART_FONT_LIGHT
 		pl.TextSize = 9
 		pl.TextColor3 = TEXT_DIM
 		pl.TextXAlignment = Enum.TextXAlignment.Right
@@ -351,7 +359,7 @@ local function createTimeLabelPool()
 		tl.Name = "TL" .. i
 		tl.Size = UDim2.new(0, 50, 1, 0)
 		tl.BackgroundTransparency = 1
-		tl.FontFace = UIController.FONT_LIGHT
+		tl.FontFace = CHART_FONT_LIGHT
 		tl.TextSize = 8
 		tl.TextColor3 = TEXT_DIM
 		tl.TextXAlignment = Enum.TextXAlignment.Center
@@ -374,7 +382,7 @@ local function createTimeframeBar()
 	timeframeBar.Name = "TimeframeBar"
 	timeframeBar.Size = UDim2.new(1, 0, 0, 22)
 	timeframeBar.Position = UDim2.new(0, 0, 0, 0)
-	timeframeBar.BackgroundColor3 = C.bgSecondary
+	timeframeBar.BackgroundColor3 = C.bgCard
 	timeframeBar.BackgroundTransparency = 0.3
 	timeframeBar.BorderSizePixel = 0
 	timeframeBar.ZIndex = 8
@@ -397,10 +405,10 @@ local function createTimeframeBar()
 		local btn = Instance.new("TextButton")
 		btn.Name = "TF_" .. tfKey
 		btn.Size = UDim2.new(0, 36, 0, 18)
-		btn.BackgroundColor3 = (tfKey == activeTimeframe) and C.accent or C.bgTertiary
+		btn.BackgroundColor3 = (tfKey == activeTimeframe) and C.accent or C.bgElevated
 		btn.BackgroundTransparency = (tfKey == activeTimeframe) and 0.1 or 0.5
 		btn.BorderSizePixel = 0
-		btn.FontFace = UIController.FONT
+		btn.FontFace = CHART_FONT
 		btn.TextSize = 9
 		btn.TextColor3 = (tfKey == activeTimeframe) and C.textPrimary or C.textSecondary
 		btn.Text = tfKey
@@ -423,7 +431,7 @@ local function highlightTimeframeButton(tfKey: string)
 	for _, child in timeframeBar:GetChildren() do
 		if child:IsA("TextButton") then
 			local isSel = child.Name == "TF_" .. tfKey
-			child.BackgroundColor3 = isSel and C.accent or C.bgTertiary
+			child.BackgroundColor3 = isSel and C.accent or C.bgElevated
 			child.BackgroundTransparency = isSel and 0.1 or 0.5
 			child.TextColor3 = isSel and C.textPrimary or C.textSecondary
 		end
@@ -431,27 +439,53 @@ local function highlightTimeframeButton(tfKey: string)
 end
 
 -------------------------------------------------
--- Initialize
+-- Initialize colors/fonts from Theme (call once)
 -------------------------------------------------
-function ChartRenderer.Init(uiCtrl)
-	UIController = uiCtrl
-	Colors = UIController.Colors
+function ChartRenderer.Init()
+	-- #region agent log
+	print("[DEBUG][ChartRenderer] Init() called")
+	-- #endregion
+	local T = getTheme()
+	Colors = T.colors
 	GREEN = Colors.green
 	RED = Colors.red
 	GRID_COLOR = Colors.border
 	TEXT_DIM = Colors.textSecondary
+	CHART_FONT = T.fonts.medium
+	CHART_FONT_LIGHT = T.fonts.light
+	-- #region agent log
+	print("[DEBUG][ChartRenderer] Init OK — Colors.bgElevated =", Colors.bgElevated)
+	-- #endregion
+end
 
-	chartContainer = UIController.GetElement("TradeOverlay.TradeModal.ChartContainer")
-	if not chartContainer then
-		warn("[ChartRenderer] ChartContainer not found!")
+-------------------------------------------------
+-- Set the chart container (called by Roact TradeModal)
+-------------------------------------------------
+function ChartRenderer.SetContainer(container: Frame)
+	-- #region agent log
+	print("[DEBUG][ChartRenderer] SetContainer() called, container =", container)
+	-- #endregion
+	if not container then
+		warn("[ChartRenderer] SetContainer called with nil!")
 		return
 	end
+	if chartContainer == container and isInitialized then return end
 
-	-- Enable clipping
+	chartContainer = container
 	chartContainer.ClipsDescendants = true
+
+	-- Compute dimensions
+	chartW = chartContainer.AbsoluteSize.X
+	chartH = chartContainer.AbsoluteSize.Y
+	-- #region agent log
+	print("[DEBUG][ChartRenderer] chartW =", chartW, "chartH =", chartH)
+	-- #endregion
 
 	-- Build internal layers and pools
 	createLayers()
+	-- #region agent log
+	print("[DEBUG][ChartRenderer] createLayers() completed successfully")
+	-- #endregion
 	createCandlePool()
 	createVolumePool()
 	createGridPool()
