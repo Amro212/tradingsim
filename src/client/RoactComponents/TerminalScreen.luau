@@ -22,8 +22,15 @@ function TerminalScreen:render()
 	local C = Theme.colors
 	local F = Theme.fonts
 
-	-- Get top movers sorted by absolute change
-	local sortedCoins = store:getSortedCoins()
+	-- Get top movers sorted by absolute change, excluding DEAD phase (§4.2)
+	local allSorted = store:getSortedCoins()
+	local sortedCoins = {}
+	for _, entry in allSorted do
+		local phase = entry.data.ph
+		if phase ~= "DEAD" then
+			table.insert(sortedCoins, entry)
+		end
+	end
 
 	local children = {}
 

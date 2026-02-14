@@ -245,11 +245,55 @@ function MarketService.Init(remotes: {[string]: any})
 end
 
 -------------------------------------------------
--- Price simulation tick
+-- Phase Parameter Modifiers (§4.2)
+-- Applied on top of base coin definition values.
+-- liquidityMult: scales effective liquidity dampening
+-- volatilityMult: scales noise amplitude
+-- driftOffset: additive bias to baseline drift
+-------------------------------------------------
+local PHASE_MODIFIERS = {
+	STEALTH = {
+		liquidityMult  = 0.35,   -- low liquidity
+		volatilityMult = 1.8,    -- high volatility
+		driftOffset    = 0,      -- neutral drift
+	},
+	HYPE = {
+		liquidityMult  = 0.8,    -- moderate liquidity
+		volatilityMult = 1.3,    -- medium-high volatility
+		driftOffset    = 0.001,  -- slight positive bias
+	},
+	DISTRIBUTION = {
+		liquidityMult  = 0.6,    -- weakening liquidity
+		volatilityMult = 1.5,    -- high volatility
+		driftOffset    = -0.0005, -- neutral to slightly negative
+	},
+	DEAD = {
+		liquidityMult  = 0.1,    -- extremely low liquidity
+		volatilityMult = 0.3,    -- low volatility (nothing happening)
+		driftOffset    = 0,      -- neutral
+	},
+	BLUECHIP = {
+		liquidityMult  = 1.2,    -- high liquidity
+		volatilityMult = 0.7,    -- moderate volatility
+		driftOffset    = 0.0005, -- slight positive bias
+	},
+}
+
+-------------------------------------------------
+-- Price simulation tick (§4.1 + §4.2)
 -------------------------------------------------
 local function tickCoin(state: CoinState, def: any, dt: number)
 	local vol = def.volatility
 	local drift = def.trendBias
+	local liq = def.liquidity
+
+	-- §4.2: Apply phase parameter modifiers
+	local phaseMod = PHASE_MODIFIERS[state.phase]
+	if phaseMod then
+		vol = vol * phaseMod.volatilityMult
+		drift = drift + phaseMod.driftOffset
+		liq = liq * phaseMod.liquidityMult
+	end
 
 	-- Apply event modifiers if active
 	local mod = activeModifiers[state.id]
@@ -262,7 +306,8 @@ local function tickCoin(state: CoinState, def: any, dt: number)
 		end
 	end
 
-	-- Stochastic random walk
+	-- §4.1: priceDelta = noise + drift + eventModifiers
+	-- (netFlowAdjustment added in M6)
 	local Z = rng:NextNumber() * 2 - 1
 	Z = Z + (rng:NextNumber() * 2 - 1)
 	Z = Z / 1.414
@@ -270,8 +315,8 @@ local function tickCoin(state: CoinState, def: any, dt: number)
 	local sqrtDt = math.sqrt(dt)
 	local change = drift * dt + vol * sqrtDt * Z * 0.05
 
-	-- Liquidity dampening
-	change = change * (1 - def.liquidity * 0.3)
+	-- Liquidity dampening (uses phase-adjusted liquidity)
+	change = change * (1 - liq * 0.3)
 
 	local newPrice = state.price * (1 + change)
 
@@ -280,8 +325,8 @@ local function tickCoin(state: CoinState, def: any, dt: number)
 	local ceil = def.basePrice * Config.PRICE_CEIL_MULT
 	newPrice = math.clamp(newPrice, floor, ceil)
 
-	-- Tick volume
-	local tickVolume = math.floor(rng:NextNumber() * 50 * def.volatility + 1)
+	-- Tick volume (phase-adjusted volatility affects volume)
+	local tickVolume = math.floor(rng:NextNumber() * 50 * vol + 1)
 
 	-- Update state
 	state.lastPrice = state.price
@@ -290,6 +335,9 @@ local function tickCoin(state: CoinState, def: any, dt: number)
 	state.high = math.max(state.high, newPrice)
 	state.low = math.min(state.low, newPrice)
 	state.volume = state.volume + tickVolume
+
+	-- Update effective liquidity on state (for TradeService slippage in M6)
+	state.liquidity = liq
 
 	-- Legacy ring buffer
 	state.priceHistory[state.historyIndex] = newPrice

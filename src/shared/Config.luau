@@ -18,7 +18,7 @@ Config.MAX_TRADES_PER_SECOND = 4
 Config.RATE_LIMIT_WINDOW = 1          -- seconds
 
 -- Market simulation
-Config.SIM_TICK = 0.5                 -- price update interval (seconds)
+Config.SIM_TICK = 1.0                 -- price update interval (seconds) §4.1: 1s base tick
 Config.BROADCAST_INTERVAL = 0.5       -- market snapshot push rate (seconds) §4.1: 0.5–1.0s
 Config.MAX_HISTORY_POINTS = 120       -- ring buffer size for line charts (legacy)
 Config.PRICE_FLOOR_MULT = 0.01        -- coin can't drop below 1% of base
