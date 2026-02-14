@@ -2,6 +2,7 @@
 	App.luau — Root Roact component that composes all UI elements.
 	Mounted into the ScreenGui by init.client.luau.
 	M1: Added MarketList for the global market overview.
+	M3: Added LaunchpadUI for coin launch overlay.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -9,6 +10,7 @@ local Roact = require(ReplicatedStorage.Packages.Roact)
 
 local TopBar          = require(script.Parent.TopBar)
 local MarketList      = require(script.Parent.MarketList)
+local LaunchpadUI     = require(script.Parent.LaunchpadUI)
 local TradeModal      = require(script.Parent.TradeModal)
 local BottomPanel     = require(script.Parent.BottomPanel)
 local Toast           = require(script.Parent.Toast)
@@ -51,6 +53,11 @@ function App:render()
 
 		-- M1: Market list (opens when player interacts with terminal)
 		MarketListEl = Roact.createElement(MarketList, {
+			store = store,
+		}),
+
+		-- M3: Launchpad overlay (opens when player interacts with launchpad stage)
+		LaunchpadEl = Roact.createElement(LaunchpadUI, {
 			store = store,
 		}),
 

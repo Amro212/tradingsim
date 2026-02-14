@@ -3,6 +3,7 @@
 	All Roact components read from this store and subscribe to changes.
 	Remote events dispatch actions into this store.
 	M1: Added tradingUIOpen for market list screen flow.
+	M3: Added launchpad state, dynamic coin support, deep-link.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -41,6 +42,12 @@ function Store.new()
 
 		-- News
 		newsEvents = {},
+
+		-- Launchpad (M3)
+		launchpadUIOpen = false,
+		launchCountdown = 0,
+		launchCurrentCoinId = nil,
+		launchRecentLaunches = {},
 
 		-- Toast
 		toastMessage = nil,
@@ -237,7 +244,32 @@ end
 
 function Store:getSelectedCoinDef()
 	local id = self._state.selectedCoinId
-	return id and Coins.ById[id] or nil
+	if not id then return nil end
+
+	-- Try static coin first
+	local def = Coins.ById[id]
+	if def then return def end
+
+	-- Fall back to dynamic coin from market data
+	local data = self._state.marketData[id]
+	if data then
+		return {
+			id = id,
+			name = data.n or id,
+			ticker = data.s or id,
+			icon = data.ic or "\u{1FA99}",
+			meta = data.m or "?",
+			initialPhase = data.ph or "STEALTH",
+			basePrice = data.p or 1,
+			volatility = 0.5,
+			liquidity = 0.3,
+			trendBias = 0,
+			riskTag = "High",
+			description = "Newly launched coin",
+			accentColor = {0.5, 0.5, 0.5},
+		}
+	end
+	return nil
 end
 
 function Store:getSelectedCoinPrice(): number
@@ -260,21 +292,93 @@ function Store:getSelectedCoinChange(): number
 end
 
 -- Get all coins sorted by absolute changePct (top movers)
+-- M3: supports both static (Coins.List) and dynamic (launched) coins
 function Store:getSortedCoins(): {{}}
 	local list = {}
+	local seen: {[string]: boolean} = {}
+
+	-- First include static coins with their full CoinDef
 	for _, coinDef in Coins.List do
 		local data = self._state.marketData[coinDef.id]
 		if data then
+			seen[coinDef.id] = true
 			table.insert(list, {
 				def = coinDef,
 				data = data,
 			})
 		end
 	end
+
+	-- Then include dynamic coins (from market data but not in Coins.List)
+	for coinId, data in self._state.marketData do
+		if not seen[coinId] then
+			-- Construct a def-like object from snapshot data
+			local dynDef = {
+				id = coinId,
+				name = data.n or coinId,
+				ticker = data.s or coinId,
+				icon = data.ic or "\u{1FA99}",
+				meta = data.m or "?",
+				initialPhase = data.ph or "STEALTH",
+				basePrice = data.p or 1,
+				volatility = 0.5,
+				liquidity = 0.3,
+				trendBias = 0,
+				riskTag = "High",
+				description = "Newly launched coin",
+				accentColor = {0.5, 0.5, 0.5},
+			}
+			table.insert(list, {
+				def = dynDef,
+				data = data,
+			})
+		end
+	end
+
 	table.sort(list, function(a, b)
 		return math.abs(a.data.cp or 0) > math.abs(b.data.cp or 0)
 	end)
 	return list
+end
+
+-- ═══════════════════════════════════════════
+-- LAUNCHPAD ACTIONS (M3)
+-- ═══════════════════════════════════════════
+
+function Store:openLaunchpadUI()
+	self._state.launchpadUIOpen = true
+	self._state.tradingUIOpen = false
+	self._state.tradeModalOpen = false
+	self:_notify()
+end
+
+function Store:closeLaunchpadUI()
+	self._state.launchpadUIOpen = false
+	self:_notify()
+end
+
+function Store:updateLaunchpadState(lpState)
+	if lpState.countdown ~= nil then
+		self._state.launchCountdown = lpState.countdown
+	end
+	if lpState.currentCoinId ~= nil then
+		self._state.launchCurrentCoinId = lpState.currentCoinId
+	end
+	if lpState.recentLaunches then
+		self._state.launchRecentLaunches = lpState.recentLaunches
+	end
+	self:_notify()
+end
+
+--- Deep-link: open Trading UI directly to a specific coin's chart
+function Store:deepLinkCoin(coinId: string)
+	self._state.launchpadUIOpen = false
+	self._state.tradingUIOpen = true
+	self._state.selectedCoinId = coinId
+	self._state.currentAction = "BUY"
+	self._state.qtyText = ""
+	self._state.tradeModalOpen = true
+	self:_notify()
 end
 
 function Store:setQuickPercent(pct: number)

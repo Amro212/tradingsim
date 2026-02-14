@@ -36,6 +36,20 @@ Config.DATASTORE_KEY_PREFIX = "PlayerData_v1_"
 -- Tutorial
 Config.TUTORIAL_ENABLED = true
 
+-- Launchpad (§5)
+Config.LAUNCH_FIRST_DELAY = 30        -- seconds before first launch after server start
+Config.LAUNCH_INTERVAL_MIN = 90       -- min seconds between launches
+Config.LAUNCH_INTERVAL_MAX = 180      -- max seconds between launches
+Config.MAX_DYNAMIC_COINS = 20         -- max dynamically launched coins alive at once
+Config.PHASE_STEALTH_DURATION_MIN = 30
+Config.PHASE_STEALTH_DURATION_MAX = 60
+Config.PHASE_HYPE_DURATION_MIN = 60
+Config.PHASE_HYPE_DURATION_MAX = 120
+Config.PHASE_DISTRIBUTION_DURATION_MIN = 60
+Config.PHASE_DISTRIBUTION_DURATION_MAX = 90
+Config.BLUECHIP_CHANCE = 0.20         -- 20% chance a coin becomes BLUECHIP instead of DEAD
+Config.LAUNCH_HISTORY_SIZE = 10       -- recent launches shown in UI
+
 -- Cosmetics placeholder IDs
 Config.COSMETIC_CATEGORIES = {"UITheme", "ChartSkin", "TitleBadge", "SoundPack"}
 Config.DEFAULT_THEME = "Dark"

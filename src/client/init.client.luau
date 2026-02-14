@@ -1,7 +1,8 @@
 --[[
 	init.client.luau — Main client entry point (Roact version).
-	Mounts Roact app tree, wires remotes to Store, handles terminal interactions.
+	Mounts Roact app tree, wires remotes to Store, handles terminal + launchpad interactions.
 	M1: Terminal Row opens MarketList; selecting a coin opens TradeModal.
+	M3: Launchpad Stage opens LaunchpadUI; deep-link to coin chart.
 ]]
 
 local Players = game:GetService("Players")
@@ -18,6 +19,7 @@ local player = Players.LocalPlayer
 local Components = script.RoactComponents
 local App = require(Components.App)
 local TerminalScreen = require(Components.TerminalScreen)
+local LaunchpadScreen = require(Components.LaunchpadScreen)
 local StoreModule = require(Components.Store)
 
 -- ChartRenderer (imperative, lives in Controllers/)
@@ -144,6 +146,66 @@ end
 task.spawn(mountTerminals)
 
 -- ═══════════════════════════════════════════════
+-- M3: Mount LaunchpadScreen SurfaceGui on launchpad stage screen
+-- Wire ProximityPrompts for launchpad and hologram interactions
+-- ═══════════════════════════════════════════════
+local _launchpadScreenTree = nil
+
+local function mountLaunchpad()
+	local floor = workspace:WaitForChild("TradingFloor", 30)
+	if not floor then return end
+
+	local stage = floor:FindFirstChild("LaunchpadStage")
+	if not stage then
+		warn("[Client] LaunchpadStage not found!")
+		return
+	end
+
+	-- Find and mount SurfaceGui on the launch countdown screen
+	local launchScreen = stage:FindFirstChild("LaunchScreen")
+	if launchScreen and launchScreen:GetAttribute("IsLaunchScreen") then
+		_launchpadScreenTree = Roact.mount(
+			Roact.createElement(LaunchpadScreen, {
+				store = store,
+			}),
+			launchScreen,
+			"LaunchpadGui"
+		)
+		print("[Client] Mounted launchpad screen SurfaceGui")
+	end
+
+	-- Wire ProximityPrompt on pedestal → open Launchpad UI
+	local pedestal = stage:FindFirstChild("HologramPedestal")
+	if pedestal then
+		local prompt = pedestal:FindFirstChildOfClass("ProximityPrompt")
+		if prompt then
+			prompt.Triggered:Connect(function()
+				store:openLaunchpadUI()
+			end)
+		end
+	end
+
+	-- Wire ProximityPrompt on hologram → deep-link to latest coin
+	local hologram = stage:FindFirstChild("Hologram")
+	if hologram and hologram:GetAttribute("IsHologram") then
+		local prompt = hologram:FindFirstChildOfClass("ProximityPrompt")
+		if prompt then
+			prompt.Triggered:Connect(function()
+				local lpState = store:getState()
+				local coinId = lpState.launchCurrentCoinId
+				if coinId then
+					store:deepLinkCoin(coinId)
+				else
+					store:openLaunchpadUI()
+				end
+			end)
+		end
+	end
+end
+
+task.spawn(mountLaunchpad)
+
+-- ═══════════════════════════════════════════════
 -- Wire timeframe switching
 -- ═══════════════════════════════════════════════
 ChartRenderer._onTimeframeChanged = function(newTf: string)
@@ -186,6 +248,9 @@ if initRemote then
 		end
 		if result.recentEvents then
 			store:loadNewsEvents(result.recentEvents)
+		end
+		if result.launchpadState then
+			store:updateLaunchpadState(result.launchpadState)
 		end
 		print("[Client] Initial state loaded!")
 	else
@@ -255,6 +320,33 @@ end)
 Remotes:WaitForChild("CoinHistory").OnClientEvent:Connect(function(_coinId, _history)
 end)
 
+-- M3: Launchpad state updates
+local launchpadStateRemote = Remotes:WaitForChild("LaunchpadState", 10)
+if launchpadStateRemote then
+	launchpadStateRemote.OnClientEvent:Connect(function(lpState)
+		store:updateLaunchpadState(lpState)
+	end)
+end
+
+-- M3: New coin launched notification
+local coinLaunchedRemote = Remotes:WaitForChild("CoinLaunched", 10)
+if coinLaunchedRemote then
+	coinLaunchedRemote.OnClientEvent:Connect(function(launchEntry)
+		-- Update recent launches in store
+		local currentState = store:getState()
+		local launches = { launchEntry }
+		for _, existing in currentState.launchRecentLaunches do
+			table.insert(launches, existing)
+		end
+		store:updateLaunchpadState({ recentLaunches = launches, currentCoinId = launchEntry.coinId })
+		-- Show toast
+		store:showToast(
+			(launchEntry.icon or "") .. " NEW: " .. (launchEntry.name or "???") .. " launched!",
+			true
+		)
+	end)
+end
+
 -- ═══════════════════════════════════════════════
 -- Periodic candle refresh while modal is open
 -- ═══════════════════════════════════════════════
@@ -284,6 +376,9 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		elseif state.tradingUIOpen then
 			-- Close market list → back to walking
 			store:closeTradingUI()
+		elseif state.launchpadUIOpen then
+			-- Close launchpad UI → back to walking
+			store:closeLaunchpadUI()
 		end
 	elseif input.KeyCode == Enum.KeyCode.LeftShift then
 		local char = player.Character
@@ -321,4 +416,4 @@ task.delay(2, function()
 	end
 end)
 
-print("[Client] TradingSim UI ready — walk to a terminal and press E.")
+print("[Client] TradingSim UI ready — walk to a terminal (E) or launchpad (E/F).")

@@ -40,6 +40,10 @@ local remotes = {
 	GetInitialState       = makeRemote("RemoteFunction", "GetInitialState"),
 	-- Events
 	NewsEvent             = makeRemote("RemoteEvent", "NewsEvent"),
+	-- Launchpad (§5, M3)
+	RequestLaunchpadState = makeRemote("RemoteEvent", "RequestLaunchpadState"),
+	LaunchpadState        = makeRemote("RemoteEvent", "LaunchpadState"),
+	CoinLaunched          = makeRemote("RemoteEvent", "CoinLaunched"),
 	-- Tutorial
 	TutorialDone          = makeRemote("RemoteEvent", "TutorialDone"),
 }
@@ -48,12 +52,13 @@ local remotes = {
 -- 2) Require services
 -- =============================================
 local Services = ServerScriptService.Server.Services
-local SaveService   = require(Services.SaveService)
-local PlayerService = require(Services.PlayerService)
-local MarketService = require(Services.MarketService)
-local EventService  = require(Services.EventService)
-local TradeService  = require(Services.TradeService)
-local TradingFloor  = require(ServerScriptService.Server.TradingFloor)
+local SaveService      = require(Services.SaveService)
+local PlayerService    = require(Services.PlayerService)
+local MarketService    = require(Services.MarketService)
+local EventService     = require(Services.EventService)
+local TradeService     = require(Services.TradeService)
+local LaunchpadService = require(Services.LaunchpadService)
+local TradingFloor     = require(ServerScriptService.Server.TradingFloor)
 
 -- =============================================
 -- 3) Initialize services (dependency order)
@@ -63,6 +68,7 @@ PlayerService.Init(remotes, SaveService)
 MarketService.Init(remotes)
 EventService.Init(remotes, MarketService)
 TradeService.Init(remotes, MarketService, PlayerService)
+LaunchpadService.Init(remotes, MarketService)
 
 print("[Server] All services initialized.")
 
@@ -71,10 +77,10 @@ local wallyProof = require(ReplicatedStorage.Shared.WallyProof)
 print("[Server] Wally packages loaded:", wallyProof)
 
 -- =============================================
--- 4) Build the 3D trading floor (Station A)
+-- 4) Build the 3D trading floor (Stations A + B)
 -- =============================================
-local _floorModel, _terminals, _tickerStrip = TradingFloor.Build()
-print("[Server] Trading floor built — Station A ready.")
+local _floorModel, _terminals, _tickerStrip, _launchpad = TradingFloor.Build()
+print("[Server] Trading floor built — Station A + B ready.")
 
 -- =============================================
 -- 5) Wire remote handlers
@@ -117,6 +123,7 @@ remotes.GetInitialState.OnServerInvoke = function(player)
 		},
 		marketSnapshot = MarketService.GetFullSnapshot(),
 		recentEvents = EventService.GetRecentEvents(),
+		launchpadState = LaunchpadService.GetState(),
 	}
 end
 
@@ -160,6 +167,15 @@ end)
 -- =============================================
 MarketService.StartLoop()
 EventService.StartLoop()
+LaunchpadService.StartLoop()
 PlayerService.StartAutosave()
 
-print("[Server] TradingSim running — Milestone 1: Global Market + Terminal UI")
+-- Periodic launchpad state broadcast (every 2 seconds)
+task.spawn(function()
+	while true do
+		task.wait(2)
+		LaunchpadService.BroadcastState()
+	end
+end)
+
+print("[Server] TradingSim running — Milestone 3: Launchpad + Coin Lifecycle")

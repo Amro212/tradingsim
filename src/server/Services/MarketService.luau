@@ -5,7 +5,8 @@
 	Broadcasts compressed snapshots to all clients at a controlled rate.
 
 	CoinState includes: price, changePct, volume, meta, phase (per §1.1, §4 Step 1).
-	OHLC candle aggregation per coin per timeframe (carried forward for M2).
+	OHLC candle aggregation per coin per timeframe (M2).
+	Dynamic coin registration via RegisterCoin() for LaunchpadService (M3).
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -22,6 +23,7 @@ export type CoinState = {
 	id: string,
 	symbol: string,
 	name: string,
+	icon: string,
 	meta: string,
 	phase: string,
 	-- Market
@@ -62,6 +64,10 @@ export type Candle = {
 local coinStates: {[string]: CoinState} = {}
 local rng = Random.new(os.time())
 local activeModifiers: {[string]: {drift: number, volMult: number, expiry: number}} = {}
+
+-- M3: allDefs contains both static (CoinsModule.List) and dynamic (launched) coin defs.
+-- All iteration loops use allDefs instead of CoinsModule.List.
+local allDefs: {any} = {}
 
 -- Remote references (set during Init)
 local marketSnapshotRemote: RemoteEvent = nil
@@ -171,6 +177,11 @@ function MarketService.Init(remotes: {[string]: any})
 	requestCandlesRemote = remotes.RequestCandles
 	requestMarketSnapshotRemote = remotes.RequestMarketSnapshot
 
+	-- Populate allDefs from static coin definitions
+	for _, def in CoinsModule.List do
+		table.insert(allDefs, def)
+	end
+
 	for _, def in CoinsModule.List do
 		local history = table.create(Config.MAX_HISTORY_POINTS, def.basePrice)
 		coinStates[def.id] = {
@@ -178,6 +189,7 @@ function MarketService.Init(remotes: {[string]: any})
 			id = def.id,
 			symbol = def.ticker,
 			name = def.name,
+			icon = def.icon,
 			meta = def.meta,
 			phase = def.initialPhase or "HYPE",
 			-- Market
@@ -348,7 +360,7 @@ local function tickCoin(state: CoinState, def: any, dt: number)
 end
 
 function MarketService.Tick(dt: number)
-	for _, def in CoinsModule.List do
+	for _, def in allDefs do
 		local state = coinStates[def.id]
 		if state then
 			tickCoin(state, def, dt)
@@ -361,13 +373,14 @@ end
 -------------------------------------------------
 local function buildSnapshotPayload(): {}
 	local coins = {}
-	for _, def in CoinsModule.List do
+	for _, def in allDefs do
 		local s = coinStates[def.id]
 		if s then
 			table.insert(coins, {
 				id = s.id,
 				s = s.symbol,    -- symbol (compact key)
 				n = s.name,      -- name
+				ic = s.icon,     -- icon (needed for dynamic coins on client)
 				m = s.meta,      -- meta category
 				ph = s.phase,    -- lifecycle phase
 				p = math.floor(s.price * 10000) / 10000,
@@ -399,7 +412,7 @@ end
 -------------------------------------------------
 function MarketService.BroadcastCandleUpdates()
 	if not candleUpdateRemote then return end
-	for _, def in CoinsModule.List do
+	for _, def in allDefs do
 		local coinCandles = currentCandle[def.id]
 		if coinCandles then
 			for tfKey, candle in coinCandles do
@@ -480,6 +493,75 @@ end
 -- Full snapshot for single player (used on join via GetInitialState)
 function MarketService.GetFullSnapshot(): {}
 	return buildSnapshotPayload()
+end
+
+-------------------------------------------------
+-- M3: Dynamic coin registration (LaunchpadService)
+-------------------------------------------------
+
+--- Register a newly launched coin into the simulation.
+--- `def` must have: id, name, ticker, icon, basePrice, volatility, liquidity, trendBias, meta, initialPhase
+function MarketService.RegisterCoin(def: any)
+	if coinStates[def.id] then
+		warn("[MarketService] Coin already registered: " .. def.id)
+		return
+	end
+
+	-- Add to allDefs so loops pick it up
+	table.insert(allDefs, def)
+
+	-- Create coin state
+	local history = table.create(Config.MAX_HISTORY_POINTS, def.basePrice)
+	coinStates[def.id] = {
+		id = def.id,
+		symbol = def.ticker,
+		name = def.name,
+		icon = def.icon or "\u{1FA99}",
+		meta = def.meta or "Memes",
+		phase = def.initialPhase or "STEALTH",
+		price = def.basePrice,
+		lastPrice = def.basePrice,
+		changePct = 0,
+		volume = 0,
+		high = def.basePrice,
+		low = def.basePrice,
+		liquidity = def.liquidity,
+		volatility = def.volatility,
+		drift = def.trendBias,
+		devTrust = 40,
+		communityStrength = 20,
+		whaleConcentration = 50,
+		devControl = 60,
+		hype = 30,
+		isTradable = true,
+		isRuggable = true,
+		eventModifiers = {},
+		priceHistory = history,
+		historyIndex = 1,
+	}
+
+	-- Initialize candle buffers for the new coin
+	candlesHistory[def.id] = {}
+	currentCandle[def.id] = {}
+	for tfKey, _ in TIMEFRAMES do
+		candlesHistory[def.id][tfKey] = {
+			candles = table.create(MAX_CANDLE_HISTORY),
+			head = 1,
+			count = 0,
+		}
+		currentCandle[def.id][tfKey] = nil
+	end
+
+	print("[MarketService] Registered dynamic coin: " .. def.id .. " (" .. def.name .. ")")
+end
+
+--- Change a coin's phase (used by LaunchpadService for lifecycle transitions)
+function MarketService.SetPhase(coinId: string, newPhase: string)
+	local state = coinStates[coinId]
+	if state then
+		state.phase = newPhase
+		print("[MarketService] " .. coinId .. " phase → " .. newPhase)
+	end
 end
 
 return MarketService
